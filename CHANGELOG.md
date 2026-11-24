@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- The CPU history graph shows the process that used the most CPU at the
+  hovered or selected measurement when process data is available
+  ([#4](https://github.com/RustWTM/RustWTM/issues/4)).
+
 ## [0.40.0] - 2026-11-24
 
 [Release scope and validation](docs/0.40.0-review.md)

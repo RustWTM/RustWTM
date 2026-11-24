@@ -649,6 +649,21 @@ impl State {
         series: &[(&str, &VecDeque<f32>, Color32)],
         unit: Unit,
     ) {
+        self.plot_noted(ui, id, times, series, unit, &|_| None);
+    }
+
+    /// [`State::plot`] with `note` on the sample at an index of `times`,
+    /// such as the process that used the most CPU then: after the value at
+    /// the pointer, and under the graph while inspecting.
+    pub fn plot_noted(
+        &mut self,
+        ui: &mut Ui,
+        id: &str,
+        times: &VecDeque<u64>,
+        series: &[(&str, &VecDeque<f32>, Color32)],
+        unit: Unit,
+        note: &dyn Fn(usize) -> Option<String>,
+    ) {
         let Some(window) = self.bounds() else {
             ui.allocate_ui_with_layout(
                 egui::vec2(ui.available_width(), 146.0),
@@ -724,6 +739,7 @@ impl State {
         // inspect elsewhere. (A separate hover tooltip stacked a second box
         // over the value.)
         let hint = crate::i18n::tr("Click a chart to inspect. Double-click to follow live.");
+        let timeline = &self.timeline;
         let value = move |hover: &egui_plot::HoverPosition<'_>| -> Option<String> {
             let egui_plot::HoverPosition::NearDataPoint {
                 plot_name,
@@ -734,11 +750,25 @@ impl State {
                 return None;
             };
             Some(match unit {
-                Unit::Percent => format!(
-                    "{} · {plot_name}: {}",
-                    short_time(position.x),
-                    crate::i18n::percent(format!("{:.1}", position.y))
-                ),
+                Unit::Percent => {
+                    let label = format!(
+                        "{} · {plot_name}: {}",
+                        short_time(position.x),
+                        crate::i18n::percent(format!("{:.1}", position.y))
+                    );
+                    // The plot only uses the timeline after the last clock
+                    // restart. An older sample may have the same timestamp.
+                    let at = (position.x * 1000.0).round() as u64;
+                    let sample = timeline
+                        .times
+                        .binary_search(&at)
+                        .ok()
+                        .and_then(|i| note(timeline.offset + i));
+                    match sample {
+                        Some(note) => format!("{label} · {note}"),
+                        None => label,
+                    }
+                }
                 Unit::Rate => return crate::app::rate_label(hover),
                 Unit::Bytes(_) => format!(
                     "{} · {plot_name}: {}",
@@ -856,6 +886,13 @@ impl State {
                         .small()
                         .color(crate::theme::text_color(ui, color)),
                     );
+                }
+                if let Some(note) = self
+                    .cursor
+                    .and_then(|at| self.timeline.nearest(at))
+                    .and_then(|(i, _)| note(i))
+                {
+                    ui.label(RichText::new(note).small().weak());
                 }
             } else if let Some(at) = self.timeline.times.last() {
                 if series.iter().any(|(_, values, _)| {

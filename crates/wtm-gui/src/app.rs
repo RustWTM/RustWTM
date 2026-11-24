@@ -4384,14 +4384,22 @@ fn perf_cpu(
             crate::theme::load_color(s.cpu_percent),
         )],
         |ui| {
-            history_plot(
+            // As Process Explorer's graph: who used the CPU at that moment.
+            view.plot_noted(
                 ui,
                 "cpu_plot",
-                "CPU",
                 &data.history.times,
-                &data.history.cpu,
-                crate::theme::CPU,
-                view,
+                &[("CPU", &data.history.cpu, crate::theme::CPU)],
+                crate::charts::Unit::Percent,
+                &|i| {
+                    data.history.top_cpu_at(i).map(|top| {
+                        format!(
+                            "{} {}",
+                            top.name,
+                            crate::i18n::percent(format!("{:.1}", top.cpu))
+                        )
+                    })
+                },
             );
             if filter.is_some() {
                 crate::perf_pages::cpu_details(ui, data, s);
@@ -7746,6 +7754,42 @@ mod tests {
     }
 
     #[test]
+    fn inspecting_the_cpu_graph_names_the_busiest_process_of_that_sample() {
+        let mut fixture = timeline_fixture(false);
+        fixture.history.top_cpu = (0..fixture.history.times.len())
+            .map(|i| {
+                Some(crate::backend::TopProcess {
+                    name: format!("p{i}.exe"),
+                    cpu: (i % 40) as f32,
+                })
+            })
+            .collect();
+        let (mut h, _) = overview_app(fixture);
+        h.state_mut().state.tab = Tab::Performance;
+        h.run_steps(3);
+        h.get_by_role_and_label(egui::accesskit::Role::Image, "CPU history graph")
+            .click();
+        h.run_steps(2);
+        let selected = h.state().state.charts.cursor.unwrap();
+        let nearest = h
+            .state()
+            .backend
+            .data()
+            .history
+            .times
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, t)| t.abs_diff(selected))
+            .map(|(i, _)| i)
+            .unwrap();
+        let note = format!("p{nearest}.exe {:.1}%", (nearest % 40) as f32);
+        assert!(h.query_by_label(&note).is_some(), "{note}");
+        // Other graphs have no process to name.
+        assert!(h.query_by_label("CPU: 42.0%").is_some());
+        assert_eq!(h.query_all_by_label(&note).count(), 1);
+    }
+
+    #[test]
     fn performance_cursor_zoom_keyboard_and_live_mode_follow_real_sample_times() {
         let mut fixture = timeline_fixture(false);
         for (i, value) in fixture.history.memory.iter_mut().enumerate() {
@@ -7817,6 +7861,41 @@ mod tests {
         h.run_steps(2);
         assert!(h.state().state.charts.window.is_none());
         assert!(h.state().state.charts.cursor.is_none());
+    }
+
+    #[test]
+    fn performance_cpu_hover_uses_the_sample_after_a_clock_restart() {
+        let mut fixture = timeline_fixture(false);
+        let midpoint = 269;
+        fixture.history.times[0] = fixture.history.times[midpoint];
+        fixture.history.cpu.iter_mut().for_each(|cpu| *cpu = 50.0);
+        fixture
+            .history
+            .top_cpu
+            .resize(fixture.history.times.len(), None);
+        fixture.history.top_cpu[0] = Some(crate::backend::TopProcess {
+            name: "older.exe".into(),
+            cpu: 31.0,
+        });
+        fixture.history.top_cpu[midpoint] = Some(crate::backend::TopProcess {
+            name: "measured.exe".into(),
+            cpu: 23.5,
+        });
+
+        let (mut h, _) = overview_app(fixture);
+        h.state_mut().state.tab = Tab::Performance;
+        h.run_steps(3);
+        h.get_by_label("1 min").click();
+        h.run_steps(2);
+        h.get_by_role_and_label(egui::accesskit::Role::Image, "CPU history graph")
+            .hover();
+        h.run_steps(2);
+
+        assert!(
+            h.query_by_label_contains("CPU: 50.0% · measured.exe 23.5%")
+                .is_some()
+        );
+        assert!(h.query_by_label_contains("older.exe").is_none());
     }
 
     #[test]

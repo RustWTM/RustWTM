@@ -195,6 +195,41 @@ pub struct History {
     /// Each disk's, network adapter's and GPU's readings, aligned with
     /// `times`.
     pub devices: crate::device_facts::DeviceSeries,
+    /// The process that used the most CPU in each sample, aligned with
+    /// `times`. None for an idle sample, and for points the service sent
+    /// when this window connected: they carry no processes.
+    pub top_cpu: VecDeque<Option<TopProcess>>,
+}
+
+/// The process that used the most CPU in one sample.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TopProcess {
+    pub name: String,
+    /// Share of the whole machine, 0..=100, as the system CPU graph.
+    pub cpu: f32,
+}
+
+impl History {
+    /// The busiest process of the sample at `index` of `times`.
+    pub fn top_cpu_at(&self, index: usize) -> Option<&TopProcess> {
+        if self.top_cpu.len() != self.times.len() {
+            return None;
+        }
+        self.top_cpu.get(index)?.as_ref()
+    }
+}
+
+/// The process with the most CPU in `processes`, leaving out the System
+/// Idle Process; none when nothing used any.
+fn top_cpu(processes: &[wtm_core::ProcessInfo]) -> Option<TopProcess> {
+    processes
+        .iter()
+        .filter(|p| p.pid != 0 && p.cpu_percent > 0.0)
+        .max_by(|a, b| a.cpu_percent.total_cmp(&b.cpu_percent))
+        .map(|p| TopProcess {
+            name: p.name.clone(),
+            cpu: p.cpu_percent,
+        })
 }
 
 /// Percent of each processor's time spent in kernel mode (DPCs and
@@ -2679,6 +2714,7 @@ fn fill_history(h: &mut History, points: &[wtm_ipc::SystemPoint]) {
     h.io_write = series(|p| p.io_write);
     // The service keeps no device history: those graphs start now.
     h.devices.clear();
+    h.top_cpu = points.iter().map(|_| None).collect();
     let recent = &points[points.len().saturating_sub(CORE_HISTORY_LEN)..];
     let cores = recent.last().map_or(0, |p| p.cores.len());
     h.cores = (0..cores)
@@ -2732,6 +2768,12 @@ fn publish_at(data: &mut Data, snapshot: Snapshot, now: Instant, unix_now: u64) 
         let h = &mut data.history;
         h.times.push_back(at_ms);
         trim(&mut h.times, HISTORY_LEN);
+        h.top_cpu.push_back(top_cpu(&snapshot.processes));
+        // Aligned from the newest sample, whatever reset `times` before.
+        trim(&mut h.top_cpu, h.times.len());
+        while h.top_cpu.len() < h.times.len() {
+            h.top_cpu.push_front(None);
+        }
         for (series, value) in [
             (&mut h.cpu, s.cpu_percent),
             (&mut h.memory, mem),
@@ -3530,6 +3572,81 @@ mod tests {
         assert_eq!(h.cores[1].back(), Some(&((HISTORY_LEN + 9) as f32)));
         fill_history(&mut h, &[]);
         assert!(h.cpu.is_empty() && h.cores.is_empty());
+    }
+
+    fn top_cpu_sample(at_ms: u64, processes: Vec<wtm_core::ProcessInfo>) -> Snapshot {
+        Snapshot {
+            taken_at_ms: at_ms,
+            processes,
+            ..crate::ui_tests::snapshot()
+        }
+    }
+
+    #[test]
+    fn each_sample_records_its_busiest_process() {
+        use crate::ui_tests::proc;
+        let mut d = Data::default();
+        let t = Instant::now();
+        let busy = vec![
+            proc(0, 0, "System Idle Process", 80.0),
+            proc(10, 0, "a.exe", 5.0),
+            proc(20, 0, "b.exe", 15.0),
+        ];
+        publish_at(&mut d, top_cpu_sample(1_000, busy), t, 1_000);
+        let idle = vec![
+            proc(0, 0, "System Idle Process", 99.0),
+            proc(10, 0, "a.exe", 0.0),
+        ];
+        publish_at(&mut d, top_cpu_sample(2_000, idle.clone()), t, 2_000);
+        // The same sample again from the service cache adds no point.
+        publish_at(&mut d, top_cpu_sample(2_000, idle), t, 2_500);
+        let h = &d.history;
+        assert_eq!(h.times.len(), 2);
+        assert_eq!(
+            h.top_cpu_at(0),
+            Some(&TopProcess {
+                name: "b.exe".into(),
+                cpu: 15.0
+            })
+        );
+        assert_eq!(h.top_cpu_at(1), None, "nothing but idle");
+
+        // Points sent by the service carry no processes.
+        let point = |at_ms| wtm_ipc::SystemPoint {
+            at_ms,
+            cpu: 50.0,
+            memory: 0.0,
+            gpu: 0.0,
+            net_rx: 0.0,
+            net_tx: 0.0,
+            io_read: 0.0,
+            io_write: 0.0,
+            cores: Vec::new(),
+        };
+        let mut d = Data::default();
+        fill_history(&mut d.history, &[point(1_000), point(2_000)]);
+        assert_eq!(d.history.top_cpu.len(), 2);
+        assert_eq!(d.history.top_cpu_at(1), None);
+        let busy = vec![proc(30, 0, "c.exe", 40.0)];
+        publish_at(&mut d, top_cpu_sample(3_000, busy), t, 3_000);
+        assert_eq!(
+            d.history.top_cpu_at(2).map(|p| p.name.as_str()),
+            Some("c.exe")
+        );
+
+        // A history reset elsewhere keeps the newest sample aligned.
+        d.history.times.clear();
+        publish_at(
+            &mut d,
+            top_cpu_sample(4_000, vec![proc(40, 0, "d.exe", 9.0)]),
+            t,
+            4_000,
+        );
+        assert_eq!(d.history.top_cpu.len(), d.history.times.len());
+        assert_eq!(
+            d.history.top_cpu_at(0).map(|p| p.name.as_str()),
+            Some("d.exe")
+        );
     }
 
     #[test]
