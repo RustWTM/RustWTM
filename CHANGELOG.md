@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-11-24
+
+[Release scope and validation](docs/0.41.0-review.md)
+
+The CPU history graph names the busiest process of each sample.
+
 ### Added
 
 - The CPU history graph shows the process that used the most CPU at the
@@ -2362,7 +2368,8 @@ First public release.
 - **Installer**: `scripts/install.ps1` / `scripts/uninstall.ps1`, release
   archives with SHA-256 checksums built by GitHub Actions.
 
-[Unreleased]: https://github.com/rustwtm/rustwtm/compare/v0.40.0...HEAD
+[Unreleased]: https://github.com/rustwtm/rustwtm/compare/v0.41.0...HEAD
+[0.41.0]: https://github.com/rustwtm/rustwtm/compare/v0.40.0...v0.41.0
 [0.40.0]: https://github.com/rustwtm/rustwtm/compare/v0.39.2...v0.40.0
 [0.39.2]: https://github.com/rustwtm/rustwtm/compare/v0.39.1...v0.39.2
 [0.39.1]: https://github.com/rustwtm/rustwtm/compare/v0.39.0...v0.39.1
