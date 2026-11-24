@@ -9,7 +9,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant, SystemTime};
 
-use wtm_core::docker::{Container, State};
+use wtm_core::docker::{Container, Endpoint, State};
 
 /// Quiet time per container and resource after an alert ended, so a value
 /// going up and down around the limit does not keep notifying.
@@ -52,6 +52,15 @@ impl Default for Settings {
 pub enum Resource {
     Cpu,
     Memory,
+}
+
+impl Settings {
+    fn limit(self, resource: Resource) -> f32 {
+        match resource {
+            Resource::Cpu => self.cpu,
+            Resource::Memory => self.memory,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -149,17 +158,45 @@ struct Track {
     quiet_until: Option<Instant>,
 }
 
+impl Track {
+    fn interrupt(&mut self) {
+        self.above_since = None;
+        self.below_since = None;
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Watch {
     pub settings: Settings,
     tracks: HashMap<(String, Resource), Track>,
-    /// The Docker context the tracks belong to.
-    context: Option<String>,
+    /// The Docker endpoint the tracks belong to.
+    endpoint: Option<Endpoint>,
     /// Newest last.
     pub notices: VecDeque<Notice>,
 }
 
 impl Watch {
+    pub fn set_settings(&mut self, settings: Settings) {
+        let previous = std::mem::replace(&mut self.settings, settings);
+        if !settings.enabled {
+            // Background polling can stop before another update is delivered.
+            self.tracks.clear();
+            return;
+        }
+        if settings.cpu == previous.cpu && settings.memory == previous.memory {
+            return;
+        }
+        for ((_, resource), track) in &mut self.tracks {
+            let before = previous.limit(*resource);
+            let after = settings.limit(*resource);
+            if after > before {
+                track.above_since = None;
+            } else if after < before {
+                track.below_since = None;
+            }
+        }
+    }
+
     /// Follows one Docker sample; returns the notices it gave, also added to
     /// [`Self::notices`].
     pub fn update(&mut self, now: Instant, state: &State) -> Vec<Notice> {
@@ -173,9 +210,9 @@ impl Watch {
             self.interrupt();
             return Vec::new();
         };
-        if self.context.as_deref() != Some(&report.endpoint.context) {
+        if self.endpoint.as_ref() != Some(&report.endpoint) {
             self.tracks.clear();
-            self.context = Some(report.endpoint.context.clone());
+            self.endpoint = Some(report.endpoint.clone());
         }
         let mut notices: Vec<(String, Kind)> = Vec::new();
         for c in &report.containers {
@@ -189,13 +226,20 @@ impl Watch {
                 notices.push((c.name.clone(), Kind::Stopped));
             }
         }
-        // A listing cut short says nothing about the containers left out.
-        if !report.truncated {
+        let listed = |name: &str| report.containers.iter().any(|c| c.name == name);
+        if report.truncated {
+            // Unlisted containers are unobserved, with no evidence of a stop.
+            for ((name, _), track) in &mut self.tracks {
+                if !listed(name) {
+                    track.interrupt();
+                }
+            }
+        } else {
             let gone: Vec<String> = self
                 .tracks
                 .keys()
+                .filter(|(name, _)| !listed(name))
                 .map(|(name, _)| name.clone())
-                .filter(|name| !report.containers.iter().any(|c| &c.name == name))
                 .collect();
             for name in gone {
                 if self.stop(now, &name) {
@@ -222,8 +266,7 @@ impl Watch {
     /// Missing measurements break every run above or below a limit.
     fn interrupt(&mut self) {
         for t in self.tracks.values_mut() {
-            t.above_since = None;
-            t.below_since = None;
+            t.interrupt();
         }
     }
 
@@ -242,15 +285,11 @@ impl Watch {
         let key = (c.name.clone(), resource);
         let (Some(measured), Some(share)) = (measured, share) else {
             if let Some(t) = self.tracks.get_mut(&key) {
-                t.above_since = None;
-                t.below_since = None;
+                t.interrupt();
             }
             return None;
         };
-        let limit = match resource {
-            Resource::Cpu => self.settings.cpu,
-            Resource::Memory => self.settings.memory,
-        };
+        let limit = self.settings.limit(resource);
         let wait = Duration::from_secs(u64::from(self.settings.seconds));
         if !self.tracks.contains_key(&key) {
             if share < limit || self.tracks.len() >= FOLLOWED * 2 {
@@ -418,7 +457,7 @@ fn clock(at: SystemTime) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wtm_core::docker::{Endpoint, Metrics, Report};
+    use wtm_core::docker::{Metrics, Report};
 
     const T0: u64 = 1000;
 
@@ -491,6 +530,112 @@ mod tests {
                 ..
             }]
         )
+    }
+
+    fn omit_web(w: &mut Watch, at: Instant) -> Vec<Notice> {
+        let mut report = state("desktop", Vec::new(), at);
+        report.report.as_mut().unwrap().truncated = true;
+        w.update(at, &report)
+    }
+
+    fn raises_after_omitted_container(t: Instant) -> bool {
+        let mut w = watch();
+        assert!(web(&mut w, t, 0, 360.0).is_empty());
+        assert!(omit_web(&mut w, t + Duration::from_secs(10)).is_empty());
+        above(&web(&mut w, t, 20, 360.0))
+    }
+
+    fn raises_after_docker_alert_toggle(t: Instant, poll_while_disabled: bool) -> bool {
+        let mut w = watch();
+        assert!(web(&mut w, t, 0, 360.0).is_empty());
+        let enabled = w.settings;
+        w.set_settings(Settings {
+            enabled: false,
+            ..enabled
+        });
+        if poll_while_disabled {
+            assert!(web(&mut w, t, 10, 360.0).is_empty());
+        }
+        w.set_settings(enabled);
+        above(&web(&mut w, t, 20, 360.0))
+    }
+
+    #[test]
+    fn observation_gap_for_an_omitted_container_restarts_its_streak() {
+        assert!(!raises_after_omitted_container(Instant::now()));
+    }
+
+    #[test]
+    fn observation_gap_while_alerts_are_off_needs_no_docker_poll() {
+        assert!(!raises_after_docker_alert_toggle(Instant::now(), false));
+    }
+
+    fn docker_threshold_transition(t: Instant, raise_cpu_limit: bool) -> (bool, bool) {
+        let mut w = watch();
+        let make_sample = |at, cpu| {
+            let mut sample = container("web", "a", true, Some(cpu), at);
+            sample.metrics.memory = Some(920);
+            state("desktop", vec![sample], at)
+        };
+        assert!(w.update(t, &make_sample(t, 340.0)).is_empty());
+        if raise_cpu_limit {
+            w.set_settings(Settings {
+                cpu: 90.0,
+                ..w.settings
+            });
+        }
+        let current = t + Duration::from_secs(20);
+        let notices = w.update(current, &make_sample(current, 380.0));
+        let raised = |target| {
+            notices
+                .iter()
+                .any(|n| matches!(n.kind, Kind::Above { resource, .. } if resource == target))
+        };
+        (raised(Resource::Cpu), raised(Resource::Memory))
+    }
+
+    fn docker_endpoint_transition(t: Instant, different_pipe: bool) -> (bool, bool) {
+        let mut pending = watch();
+        let mut active = watch();
+        let after = |s| t + Duration::from_secs(s);
+        assert!(web(&mut pending, t, 0, 360.0).is_empty());
+        assert!(web(&mut active, t, 0, 360.0).is_empty());
+        assert!(above(&web(&mut active, t, 20, 360.0)));
+
+        let on_pipe = |mut state: State| {
+            if different_pipe {
+                state.report.as_mut().unwrap().endpoint.pipe = r"\\.\pipe\other_docker".into();
+            }
+            state
+        };
+        let high = state(
+            "desktop",
+            vec![container("web", "b", true, Some(360.0), after(20))],
+            after(20),
+        );
+        let raised = !pending.update(after(20), &on_pipe(high)).is_empty();
+        let gone = state("desktop", Vec::new(), after(30));
+        let stopped = active
+            .update(after(30), &on_pipe(gone))
+            .iter()
+            .any(|n| n.kind == Kind::Stopped);
+        (raised, stopped)
+    }
+
+    #[test]
+    fn observation_limits_restart_only_the_changed_resource() {
+        assert_eq!(
+            docker_threshold_transition(Instant::now(), true),
+            (false, true)
+        );
+    }
+
+    #[test]
+    fn observation_endpoint_changes_even_if_the_context_label_matches() {
+        assert_eq!(
+            docker_endpoint_transition(Instant::now(), true),
+            (false, false)
+        );
     }
 
     #[test]

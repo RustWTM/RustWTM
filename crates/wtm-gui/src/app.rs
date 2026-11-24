@@ -1054,7 +1054,7 @@ impl eframe::App for App {
             state.performance.history.reset_request();
         }
         data.alert_watch.settings = state.alerts;
-        data.container_alerts.settings = state.container_alerts;
+        data.container_alerts.set_settings(state.container_alerts);
         if std::mem::take(&mut state.background_start) && data.alert_watch.active.is_none() {
             let window = backend.window.load(std::sync::atomic::Ordering::Relaxed);
             // Glow shows the window after the first paint, then applies this

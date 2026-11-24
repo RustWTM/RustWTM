@@ -27,6 +27,11 @@ All notable changes to this project are documented here. The format follows
 - Closing, snoozing or holding a CPU alert acts only on the alert that
   was shown. A click that arrived just as the alert closed by itself could
   close or hold the next alert instead.
+- Container alerts count a high load from the start again when a
+  container was missing from a partial Docker listing, after container
+  alerts were turned off and on, or after RustWTM switched to another
+  Docker endpoint with the same context name. A changed CPU or memory
+  limit restarts only that resource's count.
 
 ## [0.39.2] - 2026-11-23
 
