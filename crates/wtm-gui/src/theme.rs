@@ -22,6 +22,56 @@ pub const GOOD: Color32 = Color32::from_rgb(80, 180, 100);
 pub const WARN: Color32 = Color32::from_rgb(230, 140, 40);
 pub const BAD: Color32 = Color32::from_rgb(220, 70, 70);
 
+/// Theme choice shown in Settings. OLED uses egui's dark mode with true-black
+/// surfaces so those pixels stay switched off on an OLED display.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum AppTheme {
+    #[default]
+    System,
+    Light,
+    Dark,
+    Oled,
+}
+
+const APP_THEME_KEY: &str = "app-theme";
+
+impl AppTheme {
+    pub fn load(ctx: &egui::Context) -> Self {
+        ctx.data_mut(|d| d.get_persisted(egui::Id::unique(APP_THEME_KEY)))
+            .unwrap_or_else(|| match ctx.options(|o| o.theme_preference) {
+                egui::ThemePreference::System => Self::System,
+                egui::ThemePreference::Light => Self::Light,
+                egui::ThemePreference::Dark => Self::Dark,
+            })
+    }
+
+    /// Persist the choice, set egui's matching theme, then restyle it: egui
+    /// replaces its visuals on a theme change, so `apply` has to run last.
+    pub fn apply(self, ctx: &egui::Context) {
+        ctx.data_mut(|d| d.insert_persisted(egui::Id::unique(APP_THEME_KEY), self));
+        let preference = match self {
+            Self::System => egui::ThemePreference::System,
+            Self::Light => egui::ThemePreference::Light,
+            Self::Dark | Self::Oled => egui::ThemePreference::Dark,
+        };
+        ctx.set_theme(preference);
+        apply(ctx);
+    }
+
+    pub fn label_key(self) -> &'static str {
+        match self {
+            Self::System => "System",
+            Self::Light => "Light",
+            Self::Dark => "Dark",
+            Self::Oled => "OLED",
+        }
+    }
+}
+
+pub fn is_oled(ctx: &egui::Context) -> bool {
+    AppTheme::load(ctx) == AppTheme::Oled
+}
+
 /// The chart palette is bright for dark backgrounds. Use a darker tone for
 /// small coloured text on light surfaces, while retaining the resource hue.
 pub fn text_color(ui: &Ui, color: Color32) -> Color32 {
@@ -330,7 +380,58 @@ pub fn apply(ctx: &egui::Context) {
             });
         });
     }
+    if is_oled(ctx) {
+        apply_oled(ctx);
+    }
     geometry(ctx);
+}
+
+/// True black on every large surface; controls stay a step above it so
+/// borders and focus rings remain visible. Resource hues and brand orange
+/// are unchanged: they already read well against black.
+fn apply_oled(ctx: &egui::Context) {
+    const BLACK: Color32 = Color32::BLACK;
+    const CONTROL: Color32 = Color32::from_rgb(16, 16, 16);
+    const BORDER: Color32 = Color32::from_rgb(38, 38, 38);
+    const INK: Color32 = Color32::from_rgb(238, 238, 238);
+
+    ctx.style_mut_of(Theme::Dark, |style| {
+        let v = &mut style.visuals;
+        v.dark_mode = true;
+        v.panel_fill = BLACK;
+        v.window_fill = BLACK;
+        v.extreme_bg_color = Color32::from_rgb(24, 24, 24);
+        v.faint_bg_color = Color32::from_rgb(10, 10, 10);
+        v.window_shadow = epaint::Shadow {
+            offset: [0, 0],
+            blur: 0,
+            spread: 0,
+            color: Color32::TRANSPARENT,
+        };
+        v.popup_shadow = v.window_shadow;
+        v.widgets.noninteractive.fg_stroke.color = INK;
+        v.widgets.noninteractive.bg_stroke.color = BORDER;
+        v.weak_text_color = Some(Color32::from_rgb(158, 158, 158));
+        v.selection.bg_fill = Color32::from_rgb(64, 32, 16);
+        v.selection.stroke = Stroke::new(1.0, ACCENT);
+        v.hyperlink_color = ACCENT;
+        for widget in [
+            &mut v.widgets.inactive,
+            &mut v.widgets.hovered,
+            &mut v.widgets.active,
+            &mut v.widgets.open,
+        ] {
+            widget.bg_fill = CONTROL;
+            widget.weak_bg_fill = CONTROL;
+            widget.bg_stroke = Stroke::new(1.0, BORDER);
+            widget.fg_stroke = Stroke::new(1.0, INK);
+        }
+        v.widgets.inactive.bg_fill = Color32::from_rgb(28, 28, 28);
+        v.widgets.active.bg_stroke = Stroke::new(1.0, ACCENT);
+        v.widgets.noninteractive.bg_fill = BLACK;
+        v.widgets.noninteractive.weak_bg_fill = BLACK;
+        v.text_edit_bg_color = Some(Color32::from_rgb(8, 8, 8));
+    });
 }
 
 /// The hairline around controls and selected choices.
@@ -590,7 +691,7 @@ pub fn choice<T: PartialEq>(
         egui::Button::new(label)
             .selected(selected)
             .fill(if selected {
-                chip_fill(dark)
+                chip_fill(ui)
             } else {
                 Color32::TRANSPARENT
             })
@@ -619,8 +720,10 @@ pub fn choice<T: PartialEq>(
 }
 
 /// The raised chip of a selected segmented choice.
-pub fn chip_fill(dark: bool) -> Color32 {
-    if dark {
+pub fn chip_fill(ui: &Ui) -> Color32 {
+    if is_oled(ui.ctx()) {
+        Color32::from_rgb(30, 30, 30)
+    } else if ui.visuals().dark_mode {
         Color32::from_rgb(64, 64, 64)
     } else {
         Color32::WHITE
@@ -920,7 +1023,9 @@ pub fn track_color(ui: &Ui) -> Color32 {
 /// A tile inside a card, such as a drive: set apart from the card in both
 /// themes.
 pub fn tile_fill(ui: &Ui) -> Color32 {
-    if ui.visuals().dark_mode {
+    if is_oled(ui.ctx()) {
+        Color32::from_rgb(12, 12, 12)
+    } else if ui.visuals().dark_mode {
         Color32::from_rgb(35, 41, 50)
     } else {
         FIELD_LIGHT
@@ -1271,7 +1376,9 @@ pub fn more_below<R>(
 
 /// Background of a [`card`].
 pub fn card_fill(ui: &Ui) -> Color32 {
-    if ui.visuals().dark_mode {
+    if is_oled(ui.ctx()) {
+        Color32::from_rgb(8, 8, 8)
+    } else if ui.visuals().dark_mode {
         Color32::from_rgb(43, 43, 43)
     } else {
         Color32::from_rgb(251, 251, 251)
@@ -1536,6 +1643,17 @@ pub fn setting_row(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui, egui::Id)
 mod tests {
     use super::*;
     use egui_kittest::kittest::Queryable;
+
+    #[test]
+    fn oled_theme_uses_true_black_surfaces() {
+        let ctx = egui::Context::default();
+        AppTheme::Oled.apply(&ctx);
+        let visuals = &ctx.style_of(Theme::Dark).visuals;
+        assert_eq!(visuals.panel_fill, Color32::BLACK);
+        assert_eq!(visuals.window_fill, Color32::BLACK);
+        assert_eq!(visuals.extreme_bg_color, Color32::from_rgb(24, 24, 24));
+        assert_eq!(AppTheme::load(&ctx), AppTheme::Oled);
+    }
 
     #[test]
     fn settings_controls_align_and_stack_without_overflow() {

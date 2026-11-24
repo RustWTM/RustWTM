@@ -410,7 +410,7 @@ fn part_card(
 fn pill(ui: &mut Ui, text: impl Into<String>) {
     // Outlined too: on a light card the fill alone barely shows.
     egui::Frame::new()
-        .fill(theme::chip_fill(ui.visuals().dark_mode))
+        .fill(theme::chip_fill(ui))
         .stroke(Stroke::new(
             1.0,
             ui.visuals().widgets.noninteractive.bg_stroke.color,

@@ -3713,6 +3713,12 @@
     "fr": "Sombre",
     "es": "Oscuro"
   },
+  "OLED": {
+    "tr": "OLED",
+    "de": "OLED",
+    "fr": "OLED",
+    "es": "OLED"
+  },
   "Pop up when the CPU stays above": {
     "tr": "CPU şu değerin üzerinde kalırsa uyar",
     "de": "Warnen bei anhaltender CPU-Last über",

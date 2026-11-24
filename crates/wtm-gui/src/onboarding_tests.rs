@@ -118,7 +118,7 @@ fn onboarding_language_failure_preserves_choices_and_allows_retry() {
     let mut draft = state.setup_snapshot(&ctx);
     state.onboarding.begin(draft.clone());
     draft.language = Language::German;
-    draft.theme = egui::ThemePreference::Dark;
+    draft.theme = crate::theme::AppTheme::Dark;
     draft.display.scale = 125;
     draft.display.density = crate::preferences::Density::Comfortable;
     draft.mode = crate::processes::ViewMode::Tree;

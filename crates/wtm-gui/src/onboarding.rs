@@ -14,7 +14,7 @@ use eframe::egui::{self, Ui};
 #[derive(Debug, Clone, PartialEq)]
 pub struct Draft {
     pub language: Language,
-    pub theme: egui::ThemePreference,
+    pub theme: theme::AppTheme,
     pub display: Display,
     pub mode: ViewMode,
     pub inspector: Mode,
@@ -285,12 +285,13 @@ fn body(ui: &mut Ui, session: &mut Session) {
         1 => {
             theme::setting_row(ui, i18n::tr("Theme"), |ui, _| {
                 ui.horizontal_wrapped(|ui| {
-                    for (value, label) in [
-                        (egui::ThemePreference::System, "System"),
-                        (egui::ThemePreference::Light, "Light"),
-                        (egui::ThemePreference::Dark, "Dark"),
+                    for value in [
+                        theme::AppTheme::System,
+                        theme::AppTheme::Light,
+                        theme::AppTheme::Dark,
+                        theme::AppTheme::Oled,
                     ] {
-                        theme::choice(ui, &mut d.theme, value, i18n::tr(label));
+                        theme::choice(ui, &mut d.theme, value, i18n::tr(value.label_key()));
                     }
                 });
             });
@@ -373,11 +374,7 @@ fn body(ui: &mut Ui, session: &mut Session) {
             }
         }
         _ => {
-            let theme_name = i18n::tr(match d.theme {
-                egui::ThemePreference::System => "System",
-                egui::ThemePreference::Light => "Light",
-                egui::ThemePreference::Dark => "Dark",
-            });
+            let theme_name = i18n::tr(d.theme.label_key());
             let density = i18n::tr(match d.display.density {
                 Density::Compact => "Compact",
                 Density::Standard => "Standard",

@@ -688,7 +688,6 @@ impl State {
 /// One resource in the rail: a sparkline, its name and latest reading. The
 /// selected one is raised and marked with the accent, like a chosen chip.
 fn rail_entry(ui: &mut Ui, selected: bool, entry: &Entry) -> egui::Response {
-    let dark = ui.visuals().dark_mode;
     let height = 48.0;
     let (rect, response) = ui.allocate_exact_size(
         egui::vec2(ui.available_width(), height),
@@ -713,7 +712,7 @@ fn rail_entry(ui: &mut Ui, selected: bool, entry: &Entry) -> egui::Response {
         painter.rect(
             rect,
             radius,
-            crate::theme::chip_fill(dark),
+            crate::theme::chip_fill(ui),
             egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color),
             egui::StrokeKind::Inside,
         );

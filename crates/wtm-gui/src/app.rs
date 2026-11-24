@@ -536,7 +536,7 @@ impl App {
         wtm_core::control::enable_debug_privilege();
         crate::backend::register_app_id();
         crate::theme::install_fonts(&cc.egui_ctx);
-        crate::theme::apply(&cc.egui_ctx);
+        crate::theme::AppTheme::load(&cc.egui_ctx).apply(&cc.egui_ctx);
         let backend = Backend::start(cc.egui_ctx.clone());
         use raw_window_handle::{HasWindowHandle, RawWindowHandle};
         if let Ok(handle) = cc.window_handle()
@@ -658,7 +658,7 @@ impl UiState {
     fn setup_snapshot(&self, ctx: &egui::Context) -> crate::onboarding::Draft {
         crate::onboarding::Draft {
             language: self.language,
-            theme: ctx.options(|o| o.theme_preference),
+            theme: crate::theme::AppTheme::load(ctx),
             display: self.display,
             mode: self.processes.mode,
             inspector: self.inspector_mode,
@@ -687,7 +687,7 @@ impl UiState {
         self.language_error = None;
         let _language = crate::i18n::scope(self.language);
         crate::theme::install_fonts(ctx);
-        ctx.set_theme(draft.theme);
+        draft.theme.apply(ctx);
         draft.lines.store_context(ctx);
         self.display = draft.display;
         self.applied_display = None;
@@ -2600,14 +2600,16 @@ fn theme_settings(ui: &mut Ui) {
         crate::i18n::tr("Theme"),
         "",
         |ui| {
-            let mut preference = ui.ctx().options(|o| o.theme_preference);
-            for (value, label) in [
-                (egui::ThemePreference::System, crate::i18n::tr("System")),
-                (egui::ThemePreference::Light, crate::i18n::tr("Light")),
-                (egui::ThemePreference::Dark, crate::i18n::tr("Dark")),
+            let mut current = crate::theme::AppTheme::load(ui.ctx());
+            for value in [
+                crate::theme::AppTheme::System,
+                crate::theme::AppTheme::Light,
+                crate::theme::AppTheme::Dark,
+                crate::theme::AppTheme::Oled,
             ] {
-                if crate::theme::choice(ui, &mut preference, value, label).changed() {
-                    ui.ctx().set_theme(preference);
+                let label = crate::i18n::tr(value.label_key());
+                if crate::theme::choice(ui, &mut current, value, label).changed() {
+                    current.apply(ui.ctx());
                 }
             }
         },

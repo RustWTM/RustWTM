@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- An **OLED** theme next to System, Light and Dark. It uses true-black
+  surfaces, near-black controls and no flyout shadows while keeping the
+  resource palette and brand accent unchanged.
+
 ### Fixed
 
 - The CPU alert counts a high load, and the calm time before it closes
