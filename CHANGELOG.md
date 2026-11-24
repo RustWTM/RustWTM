@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-11-24
+
+[Release scope and validation](docs/0.40.0-review.md)
+
+An OLED theme, steadier CPU and container alerts, and a show / hide
+shortcut that restores a minimized window.
+
 ### Added
 
 - An **OLED** theme next to System, Light and Dark. It uses true-black
@@ -2349,7 +2356,8 @@ First public release.
 - **Installer**: `scripts/install.ps1` / `scripts/uninstall.ps1`, release
   archives with SHA-256 checksums built by GitHub Actions.
 
-[Unreleased]: https://github.com/rustwtm/rustwtm/compare/v0.39.2...HEAD
+[Unreleased]: https://github.com/rustwtm/rustwtm/compare/v0.40.0...HEAD
+[0.40.0]: https://github.com/rustwtm/rustwtm/compare/v0.39.2...v0.40.0
 [0.39.2]: https://github.com/rustwtm/rustwtm/compare/v0.39.1...v0.39.2
 [0.39.1]: https://github.com/rustwtm/rustwtm/compare/v0.39.0...v0.39.1
 [0.39.0]: https://github.com/rustwtm/rustwtm/compare/v0.38.2...v0.39.0

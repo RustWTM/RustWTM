@@ -234,6 +234,8 @@ jobs:
             sha256: '800763fd044dccd2bbd47089cb058343a8b937074a2ea330e5b52dddb7978109'
           - baseline: '0.39.1'
             sha256: 'dde692f611514d6d2062bfc69e3065322f1f24e2804502613cc93fba8074a0a4'
+          - baseline: '0.39.2'
+            sha256: 'f8908f3101db227082e322ae5aa324b198c73496fd3ca01c2f3a319d82aeaf8c'
     env:
       BASELINE_VERSION: ${{ matrix.baseline }}
       BASELINE_SHA256: ${{ matrix.sha256 }}
