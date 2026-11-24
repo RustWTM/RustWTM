@@ -1108,14 +1108,18 @@ mod tests {
 
     /// Starts `command`. A copy of a program written a moment ago can be
     /// refused ("Access is denied") while antivirus still scans it, more
-    /// often on a busy machine; that one error is retried for up to 30
-    /// seconds (10 were not enough while other builds loaded the host).
+    /// often on a busy machine, or fail to read its manifest ("side-by-side
+    /// configuration is incorrect"). Those two errors are retried for up to
+    /// 30 seconds (10 were not enough while other builds loaded the host).
     pub(super) fn start(command: &mut Proc) -> Child {
+        // ERROR_SXS_CANT_GEN_ACTCTX
+        const SIDE_BY_SIDE: i32 = 14001;
         let deadline = std::time::Instant::now() + Duration::from_secs(30);
         loop {
             match command.spawn() {
                 Err(e)
-                    if e.kind() == std::io::ErrorKind::PermissionDenied
+                    if (e.kind() == std::io::ErrorKind::PermissionDenied
+                        || e.raw_os_error() == Some(SIDE_BY_SIDE))
                         && std::time::Instant::now() < deadline =>
                 {
                     std::thread::sleep(Duration::from_millis(100));
