@@ -76,6 +76,10 @@ impl AlertWatch {
     /// by itself, unless the user held it; a new overload restarts the wait.
     pub fn update(&mut self, now: Instant, cpu: f32) -> bool {
         let threshold = self.settings.threshold;
+        if !cpu.is_finite() || !threshold.is_finite() {
+            self.interrupt();
+            return false;
+        }
         if let Some(previous) = self.last_threshold.replace(threshold) {
             // A stricter threshold can make earlier samples ineligible.
             if threshold > previous {
@@ -598,5 +602,23 @@ mod tests {
         h.state_mut().0.alert_watch.held = true;
         h.run_steps(2);
         assert!(h.query_by_label(crate::i18n::tr("Keep it open")).is_none());
+    }
+
+    #[test]
+    fn ignores_non_finite_cpu_samples() {
+        let t0 = Instant::now();
+        let mut w = AlertWatch::default();
+        assert!(!w.update(t0, f32::NAN));
+        assert!(!w.update(t0 + Duration::from_secs(10), f32::NAN));
+        assert!(w.active.is_none());
+
+        assert!(!w.update(t0 + Duration::from_secs(11), 95.0));
+        assert!(!w.update(t0 + Duration::from_secs(15), f32::NAN));
+        assert!(!w.update(t0 + Duration::from_secs(16), 95.0));
+        assert!(w.active.is_none());
+        assert!(w.update(t0 + Duration::from_secs(21), 95.0));
+
+        assert!(!w.update(t0 + Duration::from_secs(40), f32::NAN));
+        assert_eq!(w.active.unwrap().cpu, 95.0);
     }
 }

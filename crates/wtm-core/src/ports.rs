@@ -261,7 +261,15 @@ pub fn end_blocked(pid: u32, process_name: &str) -> Option<String> {
 /// Parses `3000`, `:3000` or `localhost:3000` into a port number.
 pub fn parse_port(text: &str) -> Option<u16> {
     let text = text.trim();
-    let digits = text.rsplit(':').next().unwrap_or(text).trim();
+    let digits = if let Some(rest) = text.strip_prefix('[') {
+        rest.split_once("]:")?.1.trim()
+    } else {
+        match text.split_once(':') {
+            Some((_, after)) if !after.contains(':') => after.trim(),
+            Some(_) => return None,
+            None => text,
+        }
+    };
     digits.parse::<u16>().ok().filter(|p| *p != 0)
 }
 
@@ -385,5 +393,16 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         let uses = port_uses(&crate::connections().unwrap());
         assert_eq!(port_owners(&uses, port), [std::process::id()]);
+    }
+
+    #[test]
+    fn parse_port_rejects_unbracketed_ipv6_and_accepts_bracketed_ipv6_port() {
+        assert_eq!(parse_port("::1"), None);
+        assert_eq!(parse_port("2001:db8::8080"), None);
+        assert_eq!(parse_port("[::1]"), None);
+        assert_eq!(parse_port("[::1]:8080"), Some(8080));
+        assert_eq!(parse_port("localhost:8080"), Some(8080));
+        assert_eq!(parse_port(" :5173 "), Some(5173));
+        assert_eq!(parse_port("3000"), Some(3000));
     }
 }

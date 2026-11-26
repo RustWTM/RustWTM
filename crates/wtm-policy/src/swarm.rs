@@ -185,8 +185,14 @@ pub fn find_swarms<'a>(procs: &'a [ProcessInfo], cfg: &SwarmConfig) -> Vec<Swarm
             parents.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
             Swarm {
                 name: members[0].name.clone(),
-                cpu_percent: members.iter().map(|p| p.cpu_percent).sum(),
-                memory: members.iter().map(|p| p.private_working_set).sum(),
+                cpu_percent: members
+                    .iter()
+                    .map(|p| p.cpu_percent)
+                    .filter(|c| c.is_finite() && *c >= 0.0)
+                    .sum(),
+                memory: members
+                    .iter()
+                    .fold(0u64, |acc, p| acc.saturating_add(p.private_working_set)),
                 parents,
                 members,
             }
@@ -405,5 +411,27 @@ mod tests {
             ..SwarmConfig::default()
         };
         assert!(too_long.validate().is_err());
+    }
+
+    #[test]
+    fn find_swarms_ignores_non_finite_and_negative_member_cpu() {
+        let cfg = SwarmConfig {
+            min_count: 10,
+            ..Default::default()
+        };
+        let mut procs: Vec<_> = (0..10)
+            .map(|i| proc(100 + i, 1, "worker.exe", 10))
+            .collect();
+        for p in &mut procs {
+            p.cpu_percent = 0.0;
+        }
+        procs[0].cpu_percent = 5.0;
+        procs[1].cpu_percent = f32::NAN;
+        procs[2].cpu_percent = f32::INFINITY;
+        procs[3].cpu_percent = -2.0;
+
+        let swarms = find_swarms(&procs, &cfg);
+        assert_eq!(swarms.len(), 1);
+        assert_eq!(swarms[0].cpu_percent, 5.0);
     }
 }

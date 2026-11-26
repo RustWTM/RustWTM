@@ -23,7 +23,8 @@ type Rows = Vec<(String, String)>;
 
 /// Thousands grouped by thin spaces: `12 345`.
 pub fn count(v: f64) -> String {
-    let digits = format!("{:.0}", v.max(0.0));
+    let v = if v.is_finite() && v > 0.0 { v } else { 0.0 };
+    let digits = format!("{v:.0}");
     let mut out = String::new();
     for (i, c) in digits.chars().enumerate() {
         if i > 0 && (digits.len() - i).is_multiple_of(3) {
@@ -48,7 +49,11 @@ pub fn uptime(d: std::time::Duration) -> String {
 
 /// A link or bit rate: `866.7 Mbit/s`, `1 Gbit/s`.
 pub fn bits(per_second: f64) -> String {
-    let v = per_second.max(0.0);
+    let v = if per_second.is_finite() && per_second > 0.0 {
+        per_second
+    } else {
+        0.0
+    };
     let (value, unit) = if v >= 1e9 {
         (v / 1e9, "Gbit/s")
     } else if v >= 1e6 {
@@ -825,9 +830,14 @@ pub fn network(
             ];
             if a.link_speed > 0 {
                 let used = a.rx_rate.max(a.tx_rate) * 8.0 / a.link_speed as f64 * 100.0;
+                let pct = if used.is_finite() {
+                    used.clamp(0.0, 100.0)
+                } else {
+                    0.0
+                };
                 readings.push(row(
                     crate::i18n::tr("Link utilization"),
-                    crate::i18n::percent(format!("{:.1}", used.min(100.0))),
+                    crate::i18n::percent(format!("{pct:.1}")),
                 ));
             }
             let mut facts = vec![
@@ -1296,5 +1306,18 @@ mod tests {
         assert!(engine_graphs(&[]).is_empty());
         assert_eq!(connection_type(71), "Wi-Fi");
         assert_eq!(connection_type(1), "Other");
+    }
+
+    #[test]
+    fn formats_non_finite_and_negative_counts_and_bit_rates_as_zero() {
+        assert_eq!(count(f64::NAN), "0");
+        assert_eq!(count(f64::INFINITY), "0");
+        assert_eq!(count(-42.0), "0");
+        assert_eq!(count(12_345.0), "12\u{202F}345");
+
+        assert_eq!(bits(f64::NAN), "0 bit/s");
+        assert_eq!(bits(f64::INFINITY), "0 bit/s");
+        assert_eq!(bits(-100.0), "0 bit/s");
+        assert_eq!(bits(1e9), "1 Gbit/s");
     }
 }

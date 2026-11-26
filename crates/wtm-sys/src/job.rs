@@ -1,5 +1,6 @@
 //! Job objects: hard CPU caps and memory limits.
 
+use windows::Win32::Foundation::ERROR_INVALID_PARAMETER;
 use windows::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, IsProcessInJob, JOB_OBJECT_CPU_RATE_CONTROL,
     JOB_OBJECT_CPU_RATE_CONTROL_ENABLE, JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP, JOB_OBJECT_LIMIT,
@@ -79,6 +80,11 @@ impl Job {
     /// (all logical processors). `None` removes the cap.
     pub fn set_cpu_cap(&self, percent: Option<f32>) -> Result<()> {
         let info = match percent {
+            Some(p) if !(p > 0.0 && p <= 100.0) => {
+                return Err(crate::Error::Win32(
+                    ERROR_INVALID_PARAMETER.to_hresult().into(),
+                ));
+            }
             Some(p) => JOBOBJECT_CPU_RATE_CONTROL_INFORMATION {
                 ControlFlags: JOB_OBJECT_CPU_RATE_CONTROL_ENABLE
                     | JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP,
@@ -194,5 +200,20 @@ mod tests {
         job.set_process_memory_limit(Some(1 << 30)).unwrap();
         job.set_process_memory_limit(None).unwrap();
         assert_eq!(job.limit_flags().unwrap(), breakaway);
+    }
+
+    #[test]
+    fn rejects_non_finite_and_out_of_range_cpu_caps() {
+        let job = Job::create().unwrap();
+        for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 0.0, -5.0, 100.1] {
+            let err = job.set_cpu_cap(Some(bad)).unwrap_err();
+            assert!(
+                err.is_invalid_parameter(),
+                "expected invalid parameter for {bad}: {err:?}"
+            );
+        }
+        job.set_cpu_cap(Some(0.01)).unwrap();
+        job.set_cpu_cap(Some(100.0)).unwrap();
+        job.set_cpu_cap(None).unwrap();
     }
 }

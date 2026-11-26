@@ -26,12 +26,14 @@ pub fn show(ui: &mut Ui, data: &Data, band: crate::preferences::Band) -> Option<
     let snap = data.snapshot.as_ref()?;
     let s = &snap.system;
     let h = &data.history;
+    let clean32 = |v: f32| if v.is_finite() && v >= 0.0 { v } else { 0.0 };
+    let clean64 = |v: f64| if v.is_finite() && v >= 0.0 { v } else { 0.0 };
     let memory = s.memory_used() as f64 * 100.0 / s.memory_total.max(1) as f64;
     let metrics = [
         Metric {
             resource: Resource::Cpu,
             title: "CPU",
-            value: crate::i18n::percent(format!("{:.0}", s.cpu_percent)),
+            value: crate::i18n::percent(format!("{:.0}", clean32(s.cpu_percent))),
             detail: crate::i18n::format("{0} logical processors", &[s.logical_cpus.to_string()]),
             color: theme::CPU,
             series: vec![(&h.cpu, theme::CPU)],
@@ -53,7 +55,10 @@ pub fn show(ui: &mut Ui, data: &Data, band: crate::preferences::Band) -> Option<
         Metric {
             resource: Resource::Disk,
             title: crate::i18n::tr("Disk & I/O"),
-            value: format!("{}/s", format_bytes(s.io_read_rate + s.io_write_rate)),
+            value: format!(
+                "{}/s",
+                format_bytes(clean64(s.io_read_rate) + clean64(s.io_write_rate))
+            ),
             detail: crate::i18n::tr("Read / Write").into(),
             color: theme::DISK_READ,
             series: vec![
@@ -65,7 +70,10 @@ pub fn show(ui: &mut Ui, data: &Data, band: crate::preferences::Band) -> Option<
         Metric {
             resource: Resource::Network,
             title: crate::i18n::tr("Network"),
-            value: format!("{}/s", format_bytes(s.net_rx_rate + s.net_tx_rate)),
+            value: format!(
+                "{}/s",
+                format_bytes(clean64(s.net_rx_rate) + clean64(s.net_tx_rate))
+            ),
             // Rates, as the value above them.
             detail: format!(
                 "↓ {}/s · ↑ {}/s",
@@ -79,7 +87,7 @@ pub fn show(ui: &mut Ui, data: &Data, band: crate::preferences::Band) -> Option<
         Metric {
             resource: Resource::Gpu,
             title: "GPU",
-            value: crate::i18n::percent(format!("{:.0}", s.gpu_percent)),
+            value: crate::i18n::percent(format!("{:.0}", clean32(s.gpu_percent))),
             detail: crate::i18n::tr("busiest engine").into(),
             color: theme::GPU,
             series: vec![(&h.gpu, theme::GPU)],
@@ -404,5 +412,42 @@ mod tests {
             output.textures_delta.clear();
             assert_eq!(segments, expected_segments, "{times:?}");
         }
+    }
+    #[test]
+    fn show_sanitizes_non_finite_system_rates_and_percentages() {
+        use egui_kittest::kittest::Queryable;
+        let snap = wtm_core::Snapshot {
+            processes: Vec::new(),
+            system: wtm_core::SystemStats {
+                cpu_percent: f32::NAN,
+                gpu_percent: f32::INFINITY,
+                io_read_rate: 1024.0,
+                io_write_rate: f64::NAN,
+                net_rx_rate: 2048.0,
+                net_tx_rate: f64::NEG_INFINITY,
+                logical_cpus: 4,
+                memory_total: 1000,
+                memory_available: 500,
+                ..Default::default()
+            },
+            interval: Some(std::time::Duration::from_secs(1)),
+            taken_at_ms: 0,
+            net_traced: false,
+        };
+        let data = Data {
+            snapshot: Some(std::sync::Arc::new(snap)),
+            ..Default::default()
+        };
+        let mut h = egui_kittest::Harness::builder()
+            .allow_missing_glyphs()
+            .with_size([800.0, 200.0])
+            .build_ui(|ui| {
+                let _ = show(ui, &data, crate::preferences::Band::Full);
+            });
+        h.run();
+        assert!(h.query_by_label_contains("NaN").is_none());
+        assert!(h.query_by_label_contains("inf").is_none());
+        assert!(h.query_by_label_contains("1.0 KiB/s").is_some());
+        assert!(h.query_by_label_contains("2.0 KiB/s").is_some());
     }
 }

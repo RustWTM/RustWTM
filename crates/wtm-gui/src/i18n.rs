@@ -613,7 +613,11 @@ pub fn percent_affixes() -> (String, String) {
 
 /// A number typed in a field: "2,5" or "2.5".
 pub fn parse_decimal(text: &str) -> Option<f64> {
-    text.trim().replace(',', ".").parse().ok()
+    text.trim()
+        .replace(',', ".")
+        .parse::<f64>()
+        .ok()
+        .filter(|v| v.is_finite())
 }
 
 /// Shows a slider's or number field's decimals with the language's sign,
@@ -1207,6 +1211,14 @@ mod tests {
                     assert!(catalog().contains_key(&key), "missing locale entry: {key}");
                 }
             }
+        }
+    }
+
+    #[test]
+    fn parse_decimal_rejects_non_finite_inputs() {
+        assert_eq!(parse_decimal("2,5"), Some(2.5));
+        for bad in ["NaN", "nan", "inf", "-inf", "Infinity", "-Infinity"] {
+            assert_eq!(parse_decimal(bad), None, "{bad}");
         }
     }
 }

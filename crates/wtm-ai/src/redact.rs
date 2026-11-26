@@ -279,21 +279,38 @@ fn user_profile_paths(text: &str) -> String {
 }
 
 fn replace_ignore_case(text: &str, needle: &str, with: &str) -> String {
-    let lower = text.to_lowercase();
     let needle_lower = needle.to_lowercase();
-    // Lowercasing changed a length: fall back to an exact replace.
-    if lower.len() != text.len() || needle_lower.len() != needle.len() {
-        return text.replace(needle, with);
+    if needle_lower.is_empty() {
+        return text.to_owned();
     }
+    let mut lower = String::with_capacity(text.len());
+    let mut map: Vec<(usize, usize)> = Vec::with_capacity(text.len() + 1);
+    for (orig_pos, ch) in text.char_indices() {
+        map.push((lower.len(), orig_pos));
+        for lc in ch.to_lowercase() {
+            lower.push(lc);
+        }
+    }
+    map.push((lower.len(), text.len()));
+
     let mut out = String::with_capacity(text.len());
     let mut copied = 0;
-    for (pos, _) in lower.match_indices(&needle_lower) {
-        if pos < copied {
+    for (l_start, _) in lower.match_indices(&needle_lower) {
+        let l_end = l_start + needle_lower.len();
+        let (Ok(i_start), Ok(i_end)) = (
+            map.binary_search_by_key(&l_start, |&(l, _)| l),
+            map.binary_search_by_key(&l_end, |&(l, _)| l),
+        ) else {
+            continue;
+        };
+        let orig_start = map[i_start].1;
+        let orig_end = map[i_end].1;
+        if orig_start < copied {
             continue;
         }
-        out.push_str(&text[copied..pos]);
+        out.push_str(&text[copied..orig_start]);
         out.push_str(with);
-        copied = pos + needle.len();
+        copied = orig_end;
     }
     out.push_str(&text[copied..]);
     out
@@ -387,5 +404,14 @@ mod tests {
     fn keeps_whitespace_and_lines() {
         let text = "line one\n  indented --secret=x\n\nend";
         assert_eq!(r(text), "line one\n  indented --secret=[redacted]\n\nend");
+    }
+
+    #[test]
+    fn hides_the_account_name_when_unicode_changes_byte_length() {
+        assert_eq!(
+            r(r"user: DESKTOP\ERSIN running İstanbul"),
+            r"user: DESKTOP\<user> running İstanbul"
+        );
+        assert_eq!(r("K ERSIN ẞ ersin"), "K <user> ẞ <user>");
     }
 }

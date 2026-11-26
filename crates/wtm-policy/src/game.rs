@@ -162,6 +162,7 @@ impl GameMode {
             if keys.contains(&key)
                 || Some(p.session_id) != session
                 || self.calmed.contains_key(&key)
+                || !p.cpu_percent.is_finite()
                 || p.cpu_percent < self.cfg.background_cpu_percent
                 || protection_reason(p.pid, &p.name).is_some()
                 || OWN_IMAGES.iter().any(|n| n.eq_ignore_ascii_case(&p.name))
@@ -307,5 +308,23 @@ mod tests {
             ..GameModeConfig::default()
         };
         assert!(relative.validate().is_err());
+    }
+    #[test]
+    fn ignores_non_finite_background_cpu() {
+        let procs = [
+            proc(10, "game.exe", 60.0),
+            proc(20, "nan.exe", f32::NAN),
+            proc(21, "inf.exe", f32::INFINITY),
+            proc(22, "neg.exe", -5.0),
+            proc(23, "busy.exe", 10.0),
+        ];
+        let mut g = GameMode::new(GameModeConfig::default());
+        let (d, _) = g.tick(game(&[10]), &procs);
+        let pids: HashSet<u32> = d.iter().map(|d| d.target().pid).collect();
+        assert_eq!(pids, [23].into());
+
+        let mut g2 = GameMode::new(GameModeConfig::default());
+        let (d2, _) = g2.tick(game(&[10]), &procs[..3]);
+        assert!(d2.is_empty());
     }
 }

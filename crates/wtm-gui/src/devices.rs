@@ -19,7 +19,7 @@ fn shown_unit(unit: &str) -> &str {
 }
 
 fn reading(m: &wtm_core::devices::Metric) -> String {
-    match m.value {
+    match m.value.filter(|v| v.is_finite()) {
         Some(v) if m.unit == "bytes" => crate::i18n::bytes(v),
         Some(v) if m.unit == "B/s" => format!("{}/s", crate::i18n::bytes(v)),
         Some(v) => format!("{v:.0} {}", shown_unit(&m.unit)),
@@ -1195,5 +1195,24 @@ mod tests {
                 assert!(h.query_by_label("42.0 C").is_none());
             }
         }
+    }
+    #[test]
+    fn reading_treats_non_finite_values_as_unavailable() {
+        let metric = |value, unit: &str| wtm_core::devices::Metric {
+            id: "m".into(),
+            name: "Metric".into(),
+            value,
+            unit: unit.into(),
+            counter: false,
+            ceiling: None,
+        };
+        let unavail = crate::i18n::tr("Unavailable");
+        assert_eq!(reading(&metric(Some(f64::NAN), "C")), unavail);
+        assert_eq!(reading(&metric(Some(f64::INFINITY), "%")), unavail);
+        assert_eq!(reading(&metric(Some(f64::NEG_INFINITY), "RPM")), unavail);
+        assert_eq!(reading(&metric(Some(f64::NAN), "bytes")), unavail);
+        assert_eq!(reading(&metric(Some(f64::INFINITY), "B/s")), unavail);
+        assert_eq!(reading(&metric(Some(42.0), "C")), "42 °C");
+        assert_eq!(reading(&metric(None, "C")), unavail);
     }
 }

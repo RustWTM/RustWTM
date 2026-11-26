@@ -83,6 +83,7 @@ enum Unit {
 
 impl Unit {
     fn text(self, v: f32) -> String {
+        let v = if v.is_finite() && v >= 0.0 { v } else { 0.0 };
         match self {
             Self::Percent => crate::i18n::percent(format!("{v:.1}")),
             Self::Rate => format!("{}/s", crate::i18n::bytes(f64::from(v))),
@@ -318,5 +319,16 @@ mod tests {
                 .is_some()
         );
         assert!(h.query_by_label("Active time").is_none());
+    }
+    #[test]
+    fn unit_text_treats_non_finite_and_negative_values_as_zero() {
+        for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -5.0] {
+            assert_eq!(Unit::Percent.text(bad), "0.0%");
+            assert_eq!(Unit::Rate.text(bad), "0 B/s");
+            assert_eq!(Unit::Bytes.text(bad), "0 B");
+        }
+        assert_eq!(Unit::Percent.text(12.5), "12.5%");
+        assert_eq!(Unit::Rate.text(1024.0), "1.0 KiB/s");
+        assert_eq!(Unit::Bytes.text(1024.0), "1.0 KiB");
     }
 }

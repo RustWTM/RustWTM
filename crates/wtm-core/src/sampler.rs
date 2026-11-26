@@ -48,7 +48,7 @@ struct Counters {
 impl Counters {
     fn of(p: &RawProcess) -> Self {
         Self {
-            cpu_time: p.user_time + p.kernel_time,
+            cpu_time: p.user_time.saturating_add(p.kernel_time),
             io_read: p.io_read_bytes,
             io_write: p.io_write_bytes,
             page_faults: p.page_faults,
@@ -66,7 +66,11 @@ impl ProcessInfo {
             parent_pid: p.parent_pid,
             name: p.name,
             cpu_percent: 0.0,
-            cpu_time: Duration::from_nanos((p.user_time + p.kernel_time) * 100),
+            cpu_time: Duration::from_nanos(
+                p.user_time
+                    .saturating_add(p.kernel_time)
+                    .saturating_mul(100),
+            ),
             working_set: p.working_set,
             private_working_set: p.private_working_set,
             private_bytes: p.private_bytes,
@@ -273,8 +277,12 @@ impl Sampler {
                 _ => (0.0, 0.0, 0.0),
             };
 
-            system.thread_count += u64::from(p.thread_count);
-            system.handle_count += u64::from(p.handle_count);
+            system.thread_count = system
+                .thread_count
+                .saturating_add(u64::from(p.thread_count));
+            system.handle_count = system
+                .handle_count
+                .saturating_add(u64::from(p.handle_count));
             system.io_read_rate += io_read_rate;
             system.io_write_rate += io_write_rate;
             counters.insert((p.pid, p.create_time), now_c);
@@ -386,7 +394,10 @@ fn adapter_rates(
 fn system_cpu_percent(prev: CpuTimes, now: CpuTimes) -> f32 {
     let idle = now.idle.saturating_sub(prev.idle);
     // Kernel time includes idle time.
-    let total = now.kernel.saturating_sub(prev.kernel) + now.user.saturating_sub(prev.user);
+    let total = now
+        .kernel
+        .saturating_sub(prev.kernel)
+        .saturating_add(now.user.saturating_sub(prev.user));
     if total == 0 {
         return 0.0;
     }
@@ -543,5 +554,49 @@ mod tests {
         assert!(me.memory.page_faults > 0);
         assert!(me.memory.page_fault_rate.is_finite() && me.memory.page_fault_rate >= 0.0);
         assert!(!second.system.disks.is_empty(), "this machine has a disk");
+    }
+    #[test]
+    fn saturates_huge_cpu_time_and_system_counters() {
+        let make_raw = |user_time, kernel_time| RawProcess {
+            pid: 1,
+            parent_pid: 0,
+            name: "app.exe".into(),
+            create_time: 10,
+            user_time,
+            kernel_time,
+            cycle_time: 0,
+            base_priority: 8,
+            session_id: 1,
+            thread_count: 1,
+            handle_count: 1,
+            working_set: 0,
+            private_working_set: 0,
+            private_bytes: 0,
+            virtual_size: 0,
+            page_faults: 0,
+            peak_working_set: 0,
+            paged_pool: 0,
+            nonpaged_pool: 0,
+            io_read_bytes: 0,
+            io_write_bytes: 0,
+            io_other_bytes: 0,
+            io_reads: 0,
+            io_writes: 0,
+            io_other: 0,
+            suspended: false,
+        };
+        let sat = ProcessInfo::from_raw(make_raw(u64::MAX / 50, 100));
+        assert_eq!(sat.cpu_time, Duration::from_nanos(u64::MAX));
+        assert_eq!(
+            Counters::of(&make_raw(u64::MAX - 5, 100)).cpu_time,
+            u64::MAX
+        );
+        let b = CpuTimes {
+            idle: 0,
+            kernel: u64::MAX - 5,
+            user: 100,
+            ..Default::default()
+        };
+        assert!((system_cpu_percent(CpuTimes::default(), b) - 100.0).abs() < 0.01);
     }
 }

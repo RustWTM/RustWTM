@@ -242,15 +242,17 @@ impl History {
             .clamp(0.0, 3600.0);
         for p in snap.processes.iter().filter(|p| p.pid != 0) {
             let app = lower_name(&p.name, &mut self.lower);
+            let clean32 = |v: f32| if v.is_finite() && v >= 0.0 { v } else { 0.0 };
+            let clean64 = |v: f64| if v.is_finite() && v >= 0.0 { v } else { 0.0 };
             let add = |e: &mut Sample| {
-                e.cpu += p.cpu_percent;
-                e.gpu += p.gpu_percent;
+                e.cpu += clean32(p.cpu_percent);
+                e.gpu += clean32(p.gpu_percent);
                 e.mem += p.private_working_set;
                 e.count += 1;
                 e.handles += u64::from(p.handle_count);
                 e.threads += u64::from(p.thread_count);
-                e.net_rx += p.net_rx_rate;
-                e.net_tx += p.net_tx_rate;
+                e.net_rx += clean64(p.net_rx_rate);
+                e.net_tx += clean64(p.net_tx_rate);
             };
             match self.apps.get_mut(app) {
                 Some(acc) => add(&mut acc.sample),
@@ -555,7 +557,10 @@ pub fn device_series(
             let pair = |i: usize| -> rusqlite::Result<Option<(f32, f32)>> {
                 let avg: Option<f64> = r.get(i)?;
                 let peak: Option<f64> = r.get(i + 1)?;
-                Ok(avg.zip(peak).map(|(a, p)| (a as f32, p as f32)))
+                Ok(avg
+                    .zip(peak)
+                    .map(|(a, p)| (a as f32, p as f32))
+                    .filter(|(a, p)| a.is_finite() && *a >= 0.0 && p.is_finite() && *p >= 0.0))
             };
             Ok(wtm_ipc::DeviceMinute {
                 minute: r.get(0)?,
@@ -1191,5 +1196,49 @@ mod tests {
         h.record(&snap(vec![proc(1, "a.exe", 1.0, 1)]), 180)
             .unwrap();
         assert!(h.flush().is_err());
+    }
+
+    #[test]
+    fn ignores_non_finite_and_negative_process_metrics() {
+        let mut h = History::with(Connection::open_in_memory().unwrap()).unwrap();
+        let mut bad_nan = proc(1, "bad.exe", f32::NAN, 1);
+        bad_nan.gpu_percent = f32::NAN;
+        bad_nan.net_rx_rate = f64::NAN;
+        bad_nan.net_tx_rate = f64::INFINITY;
+
+        let mut bad_neg = proc(2, "bad.exe", -15.0, 1);
+        bad_neg.gpu_percent = f32::INFINITY;
+        bad_neg.net_rx_rate = -100.0;
+        bad_neg.net_tx_rate = f64::NEG_INFINITY;
+
+        let mut good = proc(3, "bad.exe", 12.5, 1);
+        good.gpu_percent = 30.0;
+        good.net_rx_rate = 500.0;
+        good.net_tx_rate = 200.0;
+
+        h.record(&snap(vec![bad_nan, bad_neg, good]), 60).unwrap();
+        h.flush().unwrap();
+
+        let rows = series(h.connection(), "bad.exe", 0).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].cpu_avg, 12.5);
+        assert_eq!(rows[0].cpu_peak, 12.5);
+        assert_eq!(rows[0].gpu_avg, 30.0);
+        assert_eq!(rows[0].net, wtm_policy::NetBytes { rx: 500, tx: 200 });
+    }
+    #[test]
+    fn device_series_rejects_non_finite_and_negative_values() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE device (id INTEGER PRIMARY KEY, key TEXT UNIQUE, kind TEXT, label TEXT, last_seen INTEGER);
+             CREATE TABLE device_minute (device INTEGER, minute INTEGER, samples INTEGER, a_avg REAL, a_peak REAL, b_avg REAL, b_peak REAL, c_avg REAL, c_peak REAL, PRIMARY KEY(device, minute));
+             INSERT INTO device VALUES (1, 'gpu:0', 'GPU', 'GPU 0', 1);
+             INSERT INTO device_minute VALUES (1, 1, 1, 50.0, 75.0, NULL, NULL, NULL, NULL);
+             INSERT INTO device_minute VALUES (1, 2, 1, 1e300, 1e300, -1.0, 5.0, 10.0, 1e300);",
+        )
+        .unwrap();
+        let hist = device_series(&conn, "gpu:0", 0, 10).unwrap().unwrap();
+        assert_eq!(hist.minutes[0].values[0], Some((50.0, 75.0)));
+        assert_eq!(hist.minutes[1].values, [None, None, None]);
     }
 }

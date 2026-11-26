@@ -50,7 +50,7 @@ impl Composition {
 
     /// Standby and modified pages: memory that holds cached data.
     pub fn cached(&self) -> Option<u64> {
-        Some(self.standby? + self.modified?)
+        Some(self.standby?.saturating_add(self.modified?))
     }
 }
 
@@ -214,5 +214,23 @@ mod tests {
         }
         // The second call reuses the open query.
         assert!(composition().is_ok());
+    }
+    #[test]
+    fn cached_saturates_without_overflow() {
+        let sat = Composition {
+            standby: Some(u64::MAX - 10),
+            modified: Some(100),
+            ..Composition::default()
+        };
+        assert_eq!(sat.cached(), Some(u64::MAX));
+        assert_eq!(
+            Composition {
+                standby: Some(u64::MAX),
+                modified: None,
+                ..Composition::default()
+            }
+            .cached(),
+            None
+        );
     }
 }

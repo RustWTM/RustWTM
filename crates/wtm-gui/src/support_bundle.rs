@@ -382,14 +382,40 @@ fn find_ignore_case(haystack: &str, needle: &str) -> Option<usize> {
 }
 
 fn replace_ignore_case(text: &str, needle: &str, with: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(at) = find_ignore_case(rest, needle) {
-        out.push_str(&rest[..at]);
-        out.push_str(with);
-        rest = &rest[at + needle.len()..];
+    let needle_lower = needle.to_lowercase();
+    if needle_lower.is_empty() {
+        return text.to_owned();
     }
-    out.push_str(rest);
+    let mut lower = String::with_capacity(text.len());
+    let mut map: Vec<(usize, usize)> = Vec::with_capacity(text.len() + 1);
+    for (orig_pos, ch) in text.char_indices() {
+        map.push((lower.len(), orig_pos));
+        for lc in ch.to_lowercase() {
+            lower.push(lc);
+        }
+    }
+    map.push((lower.len(), text.len()));
+
+    let mut out = String::with_capacity(text.len());
+    let mut copied = 0;
+    for (l_start, _) in lower.match_indices(&needle_lower) {
+        let l_end = l_start + needle_lower.len();
+        let (Ok(i_start), Ok(i_end)) = (
+            map.binary_search_by_key(&l_start, |&(l, _)| l),
+            map.binary_search_by_key(&l_end, |&(l, _)| l),
+        ) else {
+            continue;
+        };
+        let orig_start = map[i_start].1;
+        let orig_end = map[i_end].1;
+        if orig_start < copied {
+            continue;
+        }
+        out.push_str(&text[copied..orig_start]);
+        out.push_str(with);
+        copied = orig_end;
+    }
+    out.push_str(&text[copied..]);
     out
 }
 
@@ -1157,5 +1183,22 @@ mod tests {
         );
         // Save is offered again.
         assert!(!h.get_by_label("Save…").accesskit_node().is_disabled());
+    }
+
+    #[test]
+    fn hides_non_ascii_process_names_case_insensitively() {
+        let r = Redaction {
+            account: Account {
+                redactor: wtm_ai::Redactor {
+                    user_name: Some("alice".into()),
+                },
+                profile: None,
+            },
+            names: &["çizim", "İrem"],
+            keep_names_and_paths: false,
+        };
+        assert_eq!(r.apply("throttled Çizim"), "throttled <process>");
+        assert_eq!(r.apply("İREM"), "<process>");
+        assert_eq!(replace_ignore_case("abc", "", "x"), "abc");
     }
 }

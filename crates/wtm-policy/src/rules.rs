@@ -97,12 +97,17 @@ impl Rule {
         {
             return Err("kill or suspend with this match would hit every program".into());
         }
-        if let Some(c) = &self.when
-            && c.cpu_above.is_none()
-            && c.memory_above_mb.is_none()
-            && c.gpu_above.is_none()
-        {
-            return Err("when needs `cpu_above`, `memory_above_mb` and/or `gpu_above`".into());
+        if let Some(c) = &self.when {
+            if c.cpu_above.is_none() && c.memory_above_mb.is_none() && c.gpu_above.is_none() {
+                return Err("when needs `cpu_above`, `memory_above_mb` and/or `gpu_above`".into());
+            }
+            for (name, v) in [("cpu_above", c.cpu_above), ("gpu_above", c.gpu_above)] {
+                if let Some(v) = v
+                    && !(0.0..=100.0).contains(&v)
+                {
+                    return Err(format!("when.{name} must be within 0..=100"));
+                }
+            }
         }
         // A share of the CPU the process used when the rule fired: without a
         // CPU threshold that can be nothing (a process just started, or idle
@@ -685,6 +690,25 @@ mod tests {
         for cmdline in ["vitest", "*vitest*", "node *"] {
             let config = format!("[[kill]]\nname = \"*.exe\"\ncmdline = \"{cmdline}\"\n");
             assert!(crate::Config::from_toml(&config).is_ok());
+        }
+    }
+
+    #[test]
+    fn rejects_non_finite_and_out_of_range_condition_thresholds() {
+        for valid in [
+            "[[rule]]\nname = \"r\"\nmatch = { name = \"app.exe\" }\nwhen = { cpu_above = 50.0, gpu_above = 80.0 }\nactions = [{ cpu_cap_relative = 0.5 }]\n",
+            "[[rule]]\nname = \"r\"\nmatch = { name = \"app.exe\" }\nwhen = { cpu_above = 0.0, gpu_above = 100.0 }\nactions = [\"eco_qos\"]\n",
+        ] {
+            assert!(crate::Config::from_toml(valid).is_ok(), "{valid}");
+        }
+        for bad in [
+            "[[rule]]\nname = \"r\"\nmatch = { name = \"app.exe\" }\nwhen = { cpu_above = nan }\nactions = [{ cpu_cap_relative = 0.5 }]\n",
+            "[[rule]]\nname = \"r\"\nmatch = { name = \"app.exe\" }\nwhen = { cpu_above = inf }\nactions = [\"eco_qos\"]\n",
+            "[[rule]]\nname = \"r\"\nmatch = { name = \"app.exe\" }\nwhen = { cpu_above = -1.0 }\nactions = [\"eco_qos\"]\n",
+            "[[rule]]\nname = \"r\"\nmatch = { name = \"app.exe\" }\nwhen = { gpu_above = nan }\nactions = [\"eco_qos\"]\n",
+            "[[rule]]\nname = \"r\"\nmatch = { name = \"app.exe\" }\nwhen = { gpu_above = 101.0 }\nactions = [\"eco_qos\"]\n",
+        ] {
+            assert!(crate::Config::from_toml(bad).is_err(), "{bad}");
         }
     }
 }

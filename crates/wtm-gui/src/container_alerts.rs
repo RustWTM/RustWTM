@@ -281,15 +281,16 @@ impl Watch {
         let share = match resource {
             Resource::Cpu => m.cpu_share(),
             Resource::Memory => m.memory_share(),
-        };
+        }
+        .filter(|s| s.is_finite());
         let key = (c.name.clone(), resource);
-        let (Some(measured), Some(share)) = (measured, share) else {
+        let limit = self.settings.limit(resource);
+        let (Some(measured), Some(share)) = (measured, share.filter(|_| limit.is_finite())) else {
             if let Some(t) = self.tracks.get_mut(&key) {
                 t.interrupt();
             }
             return None;
         };
-        let limit = self.settings.limit(resource);
         let wait = Duration::from_secs(u64::from(self.settings.seconds));
         if !self.tracks.contains_key(&key) {
             if share < limit || self.tracks.len() >= FOLLOWED * 2 {
@@ -882,5 +883,20 @@ mod tests {
             assert!(web(&mut w, start, secs, 400.0).is_empty());
         }
         assert!(w.tracks.is_empty());
+    }
+
+    #[test]
+    fn ignores_non_finite_share_samples() {
+        let start = Instant::now() + Duration::from_secs(T0);
+        let mut w = watch();
+        assert!(web(&mut w, start, 0, f32::NAN).is_empty());
+        assert!(web(&mut w, start, 25, f32::NAN).is_empty());
+        assert!(web(&mut w, start, 30, f32::INFINITY).is_empty());
+        assert!(web(&mut w, start, 55, f32::INFINITY).is_empty());
+
+        assert!(web(&mut w, start, 60, 360.0).is_empty());
+        assert!(web(&mut w, start, 70, f32::NAN).is_empty());
+        assert!(web(&mut w, start, 80, 360.0).is_empty());
+        assert!(above(&web(&mut w, start, 100, 360.0)));
     }
 }

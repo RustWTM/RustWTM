@@ -63,7 +63,11 @@ pub fn targets(data: &Data) -> Vec<Target> {
     .into_iter()
     .map(|t| Target {
         process: ProcessRef::from(t.process),
-        cpu: t.process.cpu_percent,
+        cpu: if t.process.cpu_percent.is_finite() && t.process.cpu_percent >= 0.0 {
+            t.process.cpu_percent
+        } else {
+            0.0
+        },
         entry: data.kill_list[t.entry].label(),
         child: t.child,
     })
@@ -112,7 +116,12 @@ pub fn panic_dialog(ctx: &egui::Context, data: &Data, open: &mut bool, intents: 
                         };
                         ui.label(name);
                         right(ui, t.process.pid.to_string());
-                        right(ui, crate::i18n::percent(format!("{:.1}", t.cpu)));
+                        let cpu = if t.cpu.is_finite() && t.cpu >= 0.0 {
+                            t.cpu
+                        } else {
+                            0.0
+                        };
+                        right(ui, crate::i18n::percent(format!("{cpu:.1}")));
                         ui.weak(&t.entry);
                         crate::theme::end_row(ui);
                     }
@@ -743,5 +752,67 @@ mod tests {
             "the form must see its entry in the reloaded list, or Add entry adds it again: {:?} vs {reloaded:?}",
             view.saving
         );
+    }
+    #[test]
+    fn panic_dialog_sanitizes_non_finite_and_negative_cpu() {
+        use egui_kittest::{Harness, kittest::Queryable};
+        let make_proc = |pid, cpu_percent| wtm_core::ProcessInfo {
+            io: Default::default(),
+            cycle_percent: 0.0,
+            pid,
+            parent_pid: 1,
+            name: "hog.exe".into(),
+            cpu_percent,
+            cpu_time: std::time::Duration::ZERO,
+            working_set: 0,
+            private_working_set: 0,
+            private_bytes: 0,
+            thread_count: 1,
+            handle_count: 1,
+            session_id: 1,
+            base_priority: 8,
+            gpu_percent: 0.0,
+            gpu_memory: 0,
+            io_read_rate: 0.0,
+            io_write_rate: 0.0,
+            net_rx_rate: 0.0,
+            net_tx_rate: 0.0,
+            suspended: false,
+            create_time: i64::from(pid),
+            memory: Default::default(),
+            gpu_detail: Default::default(),
+        };
+        let data = Data {
+            kill_list: vec![wtm_policy::KillEntry {
+                name: "hog.exe".into(),
+                ..wtm_policy::KillEntry::default()
+            }],
+            snapshot: Some(std::sync::Arc::new(wtm_core::Snapshot {
+                processes: vec![
+                    make_proc(42, f32::NAN),
+                    make_proc(43, f32::INFINITY),
+                    make_proc(44, -5.0),
+                ],
+                system: Default::default(),
+                interval: None,
+                taken_at_ms: 0,
+                net_traced: false,
+            })),
+            ..Data::default()
+        };
+        assert!(targets(&data).iter().all(|t| t.cpu == 0.0));
+        let mut open = true;
+        let mut h = Harness::builder()
+            .allow_missing_glyphs()
+            .with_size([800.0, 500.0])
+            .build_ui(|ui| {
+                let mut intents = Vec::new();
+                panic_dialog(ui.ctx(), &data, &mut open, &mut intents);
+            });
+        h.run();
+        assert!(h.query_by_label_contains("NaN").is_none());
+        assert!(h.query_by_label_contains("inf").is_none());
+        assert!(h.query_by_label_contains("-5.0").is_none());
+        assert_eq!(h.query_all_by_label_contains("0.0%").count(), 3);
     }
 }

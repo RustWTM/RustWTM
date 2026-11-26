@@ -126,6 +126,9 @@ impl RescueCore {
             self.since = None;
             return std::mem::take(&mut self.engaged).then_some(RescueStep::Release);
         }
+        if !cpu_percent.is_finite() {
+            return None;
+        }
         let (crossing, hold) = if self.engaged {
             (
                 cpu_percent <= self.cfg.release_cpu_percent,
@@ -263,5 +266,38 @@ mod tests {
         };
         assert!(huge.validate().is_err());
         assert!(ReserveConfig::default().validate().is_ok());
+    }
+    #[test]
+    fn ignores_non_finite_cpu_samples() {
+        let t0 = Instant::now();
+        let mut r = RescueCore::new(ReserveConfig::default());
+
+        assert_eq!(r.tick(t0, 96.0), None);
+        assert_eq!(r.tick(t0 + Duration::from_secs(2), f32::NAN), None);
+        assert_eq!(
+            r.tick(t0 + Duration::from_secs(3), 96.0),
+            Some(RescueStep::Engage)
+        );
+
+        assert_eq!(r.tick(t0 + Duration::from_secs(4), 50.0), None);
+        assert_eq!(r.tick(t0 + Duration::from_secs(10), f32::INFINITY), None);
+        assert_eq!(
+            r.tick(t0 + Duration::from_secs(14), 50.0),
+            Some(RescueStep::Release)
+        );
+
+        assert_eq!(r.tick(t0 + Duration::from_secs(15), 96.0), None);
+        assert_eq!(
+            r.tick(t0 + Duration::from_secs(18), 96.0),
+            Some(RescueStep::Engage)
+        );
+        r.set_config(ReserveConfig {
+            rescue_core: false,
+            ..ReserveConfig::default()
+        });
+        assert_eq!(
+            r.tick(t0 + Duration::from_secs(19), f32::NAN),
+            Some(RescueStep::Release)
+        );
     }
 }

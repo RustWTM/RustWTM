@@ -241,17 +241,24 @@ pub struct SystemPoint {
 
 impl SystemPoint {
     pub fn of(snap: &Snapshot) -> Self {
+        let clean32 = |v: f32| if v.is_finite() && v >= 0.0 { v } else { 0.0 };
+        let clean_rate = |v: f64| {
+            let f = v as f32;
+            if f.is_finite() && f >= 0.0 { f } else { 0.0 }
+        };
         let s = &snap.system;
+        let mem = (s.memory_used() as f64 * 100.0 / s.memory_total.max(1) as f64).clamp(0.0, 100.0)
+            as f32;
         Self {
             at_ms: snap.taken_at_ms,
-            cpu: s.cpu_percent,
-            memory: s.memory_used() as f32 * 100.0 / s.memory_total.max(1) as f32,
-            gpu: s.gpu_percent,
-            net_rx: s.net_rx_rate as f32,
-            net_tx: s.net_tx_rate as f32,
-            io_read: s.io_read_rate as f32,
-            io_write: s.io_write_rate as f32,
-            cores: s.core_percent.clone(),
+            cpu: clean32(s.cpu_percent),
+            memory: clean32(mem),
+            gpu: clean32(s.gpu_percent),
+            net_rx: clean_rate(s.net_rx_rate),
+            net_tx: clean_rate(s.net_tx_rate),
+            io_read: clean_rate(s.io_read_rate),
+            io_write: clean_rate(s.io_write_rate),
+            cores: s.core_percent.iter().copied().map(clean32).collect(),
         }
     }
 }
@@ -982,5 +989,63 @@ mod tests {
              decode {decode:?} (reused buffer {decode_with:?})",
             frame.len()
         );
+    }
+    #[test]
+    fn system_point_sanitizes_non_finite_and_negative_metrics() {
+        let snap = Snapshot {
+            processes: Vec::new(),
+            system: wtm_core::SystemStats {
+                cpu_percent: f32::NAN,
+                gpu_percent: f32::INFINITY,
+                memory_total: 1000,
+                memory_available: 400,
+                net_rx_rate: 1e300,
+                net_tx_rate: -50.0,
+                io_read_rate: f64::NAN,
+                io_write_rate: f64::NEG_INFINITY,
+                core_percent: vec![20.0, f32::NAN, -1.0, f32::INFINITY],
+                ..Default::default()
+            },
+            interval: None,
+            taken_at_ms: 1000,
+            net_traced: false,
+        };
+        let pt = SystemPoint::of(&snap);
+        assert_eq!(pt.cpu, 0.0);
+        assert_eq!(pt.gpu, 0.0);
+        assert_eq!(pt.memory, 60.0);
+        assert_eq!(pt.net_rx, 0.0);
+        assert_eq!(pt.net_tx, 0.0);
+        assert_eq!(pt.io_read, 0.0);
+        assert_eq!(pt.io_write, 0.0);
+        assert_eq!(pt.cores, vec![20.0, 0.0, 0.0, 0.0]);
+
+        let valid_snap = Snapshot {
+            processes: Vec::new(),
+            system: wtm_core::SystemStats {
+                cpu_percent: 42.5,
+                gpu_percent: 15.0,
+                memory_total: 0,
+                memory_available: 0,
+                net_rx_rate: 1024.0,
+                net_tx_rate: 512.0,
+                io_read_rate: 256.0,
+                io_write_rate: 128.0,
+                core_percent: vec![10.0, 20.0],
+                ..Default::default()
+            },
+            interval: None,
+            taken_at_ms: 2000,
+            net_traced: false,
+        };
+        let valid_pt = SystemPoint::of(&valid_snap);
+        assert_eq!(valid_pt.cpu, 42.5);
+        assert_eq!(valid_pt.gpu, 15.0);
+        assert_eq!(valid_pt.memory, 0.0);
+        assert_eq!(valid_pt.net_rx, 1024.0);
+        assert_eq!(valid_pt.net_tx, 512.0);
+        assert_eq!(valid_pt.io_read, 256.0);
+        assert_eq!(valid_pt.io_write, 128.0);
+        assert_eq!(valid_pt.cores, vec![10.0, 20.0]);
     }
 }

@@ -103,6 +103,9 @@ impl Governor {
         }
 
         let cpu = snap.system.cpu_percent;
+        if !cpu.is_finite() {
+            return Vec::new();
+        }
         if cpu >= self.cfg.high_cpu_percent {
             self.low_since = None;
             let since = *self.high_since.get_or_insert(now);
@@ -128,7 +131,9 @@ impl Governor {
         let mut offenders: Vec<_> = snap
             .processes
             .iter()
-            .filter(|p| p.cpu_percent >= self.cfg.offender_min_cpu_percent)
+            .filter(|p| {
+                p.cpu_percent.is_finite() && p.cpu_percent >= self.cfg.offender_min_cpu_percent
+            })
             .filter(|p| protection_reason(p.pid, &p.name).is_none())
             .filter(|p| !self.cfg.exempt.iter().any(|e| glob_match(e, &p.name)))
             .filter(|p| {
@@ -487,5 +492,38 @@ mod tests {
         });
         g.set_foreground([(10, 100)].into());
         assert_eq!(applied(&g.tick(now, &snap(99.0, procs()))).len(), 2);
+    }
+    #[test]
+    fn ignores_non_finite_cpu_samples() {
+        let t0 = Instant::now();
+        let mut g = Governor::new(cfg());
+        let hog = vec![proc(10, "hog.exe", 50.0)];
+
+        assert!(g.tick(t0, &snap(95.0, hog.clone())).is_empty());
+        assert!(
+            g.tick(t0 + secs(2), &snap(f32::NAN, hog.clone()))
+                .is_empty()
+        );
+        assert!(!g.tick(t0 + secs(3), &snap(95.0, hog.clone())).is_empty());
+
+        assert!(g.tick(t0 + secs(4), &snap(20.0, hog.clone())).is_empty());
+        assert!(
+            g.tick(t0 + secs(6), &snap(f32::INFINITY, hog.clone()))
+                .is_empty()
+        );
+        let restored = g.tick(t0 + secs(9), &snap(20.0, hog));
+        assert_eq!(restored.len(), 1);
+        assert!(matches!(&restored[0], Decision::Restore { .. }));
+
+        let mut g2 = Governor::new(GovernorConfig {
+            sustain_secs: 0,
+            ..cfg()
+        });
+        let procs = vec![
+            proc(10, "inf.exe", f32::INFINITY),
+            proc(11, "real.exe", 40.0),
+        ];
+        let d = g2.tick(t0, &snap(95.0, procs));
+        assert_eq!(applied(&d).iter().map(|a| a.0).collect::<Vec<_>>(), [11]);
     }
 }

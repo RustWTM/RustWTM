@@ -845,11 +845,11 @@ impl<A: Api, H: Host> Bot<A, H> {
         };
         lines.push(format!("Governor {governor}"));
         let mut busiest: Vec<&ProcessInfo> = snap.processes.iter().filter(|p| p.pid > 4).collect();
-        busiest.sort_by(|a, b| b.cpu_percent.total_cmp(&a.cpu_percent));
+        busiest.sort_by(|a, b| clean_cpu(b.cpu_percent).total_cmp(&clean_cpu(a.cpu_percent)));
         let top: Vec<String> = busiest
             .iter()
             .take(3)
-            .map(|p| format!("{} {:.0}%", p.name, p.cpu_percent))
+            .map(|p| format!("{} {:.0}%", p.name, clean_cpu(p.cpu_percent)))
             .collect();
         lines.push(format!("Busiest  {}", top.join(", ")));
         Reply::text(format!("🖥 <b>{}</b>\n{}", esc(&self.computer), pre(&lines)))
@@ -882,7 +882,7 @@ impl<A: Api, H: Host> Bot<A, H> {
                 "{:<22} {:>6} {:>4.0}% {:>9}",
                 clip(&p.name, 22),
                 p.pid,
-                p.cpu_percent,
+                clean_cpu(p.cpu_percent),
                 mem(p)
             )
         }));
@@ -894,7 +894,7 @@ impl<A: Api, H: Host> Bot<A, H> {
         if by_memory {
             list.sort_by_key(|p| std::cmp::Reverse(p.private_working_set));
         } else {
-            list.sort_by(|a, b| b.cpu_percent.total_cmp(&a.cpu_percent));
+            list.sort_by(|a, b| clean_cpu(b.cpu_percent).total_cmp(&clean_cpu(a.cpu_percent)));
         }
         list.truncate(n);
         let title = if by_memory { "Most memory" } else { "Busiest" };
@@ -921,10 +921,16 @@ impl<A: Api, H: Host> Bot<A, H> {
         if list.is_empty() {
             return Reply::text(format!("No process name contains “{}”.", esc(arg)));
         }
-        list.sort_by(|a, b| b.cpu_percent.total_cmp(&a.cpu_percent));
+        list.sort_by(|a, b| clean_cpu(b.cpu_percent).total_cmp(&clean_cpu(a.cpu_percent)));
         let total = list.len();
-        let memory: u64 = list.iter().map(|p| p.private_working_set).sum();
-        let cpu: f32 = list.iter().map(|p| p.cpu_percent).sum();
+        let memory: u64 = list
+            .iter()
+            .fold(0u64, |acc, p| acc.saturating_add(p.private_working_set));
+        let cpu: f32 = list
+            .iter()
+            .map(|p| p.cpu_percent)
+            .filter(|c| c.is_finite() && *c >= 0.0)
+            .sum();
         list.truncate(25);
         let mut reply = Reply::text(format!(
             "<b>{total}</b> matching “{}” · {cpu:.0}% CPU · {}\n{}",
@@ -1877,6 +1883,10 @@ fn run(
     }
 }
 
+fn clean_cpu(v: f32) -> f32 {
+    if v.is_finite() && v >= 0.0 { v } else { 0.0 }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2761,5 +2771,58 @@ mod tests {
                 .all(|c| !control_command(c["command"].as_str().unwrap()))
         );
         assert_eq!(calls[1].1["chat_id"], ME);
+    }
+
+    #[test]
+    fn find_ignores_non_finite_and_negative_process_cpu() {
+        let (bot, _) = bot(false);
+        let ok = proc(10, "app.exe", 15.0);
+        let nan = proc(11, "app.exe", f32::NAN);
+        let inf = proc(12, "app.exe", f32::INFINITY);
+        let neg = proc(13, "app.exe", -5.0);
+        let reply = bot.find(&[ok, nan, inf, neg], "app", false);
+        assert!(reply.text.contains("15% CPU"), "{}", reply.text);
+        assert!(!reply.text.contains("NaN% CPU"), "{}", reply.text);
+    }
+
+    #[test]
+    fn top_and_status_sanitize_non_finite_and_negative_process_cpu() {
+        let (bot, _) = bot(false);
+        let ok = proc(10, "real.exe", 25.0);
+        let nan = proc(11, "bogus.exe", f32::NAN);
+        let inf = proc(12, "inf.exe", f32::INFINITY);
+        let neg = proc(13, "neg.exe", -10.0);
+
+        let reply = bot.top(
+            &[nan.clone(), ok.clone(), inf.clone(), neg.clone()],
+            5,
+            false,
+            false,
+        );
+        assert!(
+            !reply.text.contains("NaN%")
+                && !reply.text.contains("inf%")
+                && !reply.text.contains("-10%")
+        );
+        let real_pos = reply.text.find("real.exe").unwrap();
+        let bogus_pos = reply.text.find("bogus.exe").unwrap();
+        assert!(real_pos < bogus_pos);
+
+        let find_reply = bot.find(&[nan.clone(), ok.clone(), neg.clone()], "e", false);
+        assert!(!find_reply.text.contains("NaN%") && !find_reply.text.contains("-10%"));
+        assert!(
+            find_reply.text.find("real.exe").unwrap() < find_reply.text.find("bogus.exe").unwrap()
+        );
+
+        let snap = wtm_core::Snapshot {
+            processes: vec![nan, ok, inf, neg],
+            system: wtm_core::SystemStats::default(),
+            interval: None,
+            taken_at_ms: 0,
+            net_traced: false,
+        };
+        let status_reply = bot.status(&snap);
+        assert!(!status_reply.text.contains("NaN%") && !status_reply.text.contains("inf%"));
+        assert!(status_reply.text.contains("real.exe 25%"));
     }
 }

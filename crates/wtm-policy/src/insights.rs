@@ -128,10 +128,11 @@ pub fn summarize(app: &str, rows: &[MinuteRow], logical_cpus: u32) -> Option<App
     rows.sort_by_key(|r| r.minute);
     let n = rows.len() as f64;
 
-    let mut cpu: Vec<f32> = rows.iter().map(|r| r.cpu_avg).collect();
+    let clean = |v: f32| if v.is_finite() && v >= 0.0 { v } else { 0.0 };
+    let mut cpu: Vec<f32> = rows.iter().map(|r| clean(r.cpu_avg)).collect();
     cpu.sort_by(f32::total_cmp);
     let p95_index = ((cpu.len() as f64 * 0.95).ceil() as usize).clamp(1, cpu.len()) - 1;
-    let mut gpu: Vec<f32> = rows.iter().map(|r| r.gpu_avg).collect();
+    let mut gpu: Vec<f32> = rows.iter().map(|r| clean(r.gpu_avg)).collect();
     gpu.sort_by(f32::total_cmp);
 
     // Linear regression of memory against time (hours).
@@ -145,13 +146,13 @@ pub fn summarize(app: &str, rows: &[MinuteRow], logical_cpus: u32) -> Option<App
     let (thread_slope, thread_fit) = trend(&xs, &threads);
     let last = rows.last().copied().unwrap_or_default();
 
-    let cpu_sum: f64 = rows.iter().map(|r| f64::from(r.cpu_avg)).sum();
+    let cpu_sum: f64 = cpu.iter().map(|c| f64::from(*c)).sum();
     Some(AppStats {
         app: app.to_owned(),
         minutes: rows.len() as u32,
         cpu_avg: (cpu_sum / n) as f32,
         cpu_p95: cpu[p95_index],
-        cpu_peak: rows.iter().map(|r| r.cpu_peak).fold(0.0, f32::max),
+        cpu_peak: rows.iter().map(|r| clean(r.cpu_peak)).fold(0.0, f32::max),
         gpu_avg: (gpu.iter().map(|g| f64::from(*g)).sum::<f64>() / n) as f32,
         gpu_p95: gpu[p95_index],
         mem_avg: (ys.iter().sum::<f64>() / n) as u64,
@@ -249,6 +250,18 @@ impl InsightsConfig {
         ] {
             if !(0.0..=100.0).contains(&v) {
                 return Err(format!("{name} must be within 0..=100"));
+            }
+        }
+        if !(0.0..=1.0).contains(&self.growth_min_fit) {
+            return Err("growth_min_fit must be within 0..=1".into());
+        }
+        for (name, v) in [
+            ("growth_mb_per_hour", self.growth_mb_per_hour),
+            ("handle_growth_per_hour", self.handle_growth_per_hour),
+            ("thread_growth_per_hour", self.thread_growth_per_hour),
+        ] {
+            if !v.is_finite() || v < 0.0 {
+                return Err(format!("{name} must be finite and non-negative"));
             }
         }
         for a in self
@@ -891,5 +904,49 @@ mod tests {
         assert_eq!(restores.len(), 1);
         assert_eq!(applied(p.tick(&procs, &cfg)), [Action::MemoryCapMb(4096)]);
         assert!(p.tick(&procs, &cfg).is_empty());
+    }
+
+    #[test]
+    fn rejects_non_finite_and_out_of_range_growth_thresholds() {
+        for valid in [
+            "[insights]\ngrowth_mb_per_hour = 200.0\ngrowth_min_fit = 0.7\nhandle_growth_per_hour = 0.0\nthread_growth_per_hour = 50.0\n",
+            "[insights]\ngrowth_min_fit = 0.0\n",
+            "[insights]\ngrowth_min_fit = 1.0\n",
+        ] {
+            assert!(crate::Config::from_toml(valid).is_ok(), "{valid}");
+        }
+        for bad in [
+            "[insights]\ngrowth_mb_per_hour = nan\n",
+            "[insights]\ngrowth_mb_per_hour = inf\n",
+            "[insights]\ngrowth_mb_per_hour = -1.0\n",
+            "[insights]\ngrowth_min_fit = nan\n",
+            "[insights]\ngrowth_min_fit = -0.1\n",
+            "[insights]\ngrowth_min_fit = 1.1\n",
+            "[insights]\nhandle_growth_per_hour = nan\n",
+            "[insights]\nthread_growth_per_hour = -5.0\n",
+        ] {
+            assert!(crate::Config::from_toml(bad).is_err(), "{bad}");
+        }
+    }
+    #[test]
+    fn summarize_ignores_non_finite_and_negative_cpu_and_gpu() {
+        let mut rows = vec![row(1, 20.0, 100), row(2, f32::NAN, 100)];
+        rows[1].cpu_peak = f32::INFINITY;
+        rows[1].gpu_avg = f32::NAN;
+        let s = summarize("worker.exe", &rows, 4).unwrap();
+        assert_eq!(s.cpu_avg, 10.0);
+        assert_eq!(s.cpu_p95, 20.0);
+        assert_eq!(s.cpu_peak, 40.0);
+        assert_eq!(s.gpu_avg, 0.0);
+        assert_eq!(s.gpu_p95, 0.0);
+        assert!(s.cpu_core_seconds.is_finite());
+
+        rows[0].cpu_avg = -10.0;
+        rows[0].cpu_peak = f32::NEG_INFINITY;
+        rows[1].gpu_avg = -5.0;
+        let s2 = summarize("worker.exe", &rows, 4).unwrap();
+        assert_eq!(s2.cpu_avg, 0.0);
+        assert_eq!(s2.cpu_peak, 0.0);
+        assert_eq!(s2.gpu_avg, 0.0);
     }
 }

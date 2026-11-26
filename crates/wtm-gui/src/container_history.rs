@@ -399,7 +399,11 @@ pub fn minute_chart(
         egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color),
         egui::StrokeKind::Inside,
     );
-    let top = points.iter().map(|p| p.2).fold(0.0, f32::max);
+    let top = points
+        .iter()
+        .map(|p| p.2)
+        .filter(|v| v.is_finite() && *v >= 0.0)
+        .fold(0.0, f32::max);
     if points.is_empty() || top <= 0.0 {
         return;
     }
@@ -478,6 +482,9 @@ fn condense(points: &[(i64, f32, f32)], start: i64, span: i64, width: usize) -> 
     let mut out: Vec<Slot> = Vec::new();
     let mut count = 0u32;
     for &(minute, avg, peak) in points {
+        if !avg.is_finite() || avg < 0.0 || !peak.is_finite() || peak < 0.0 {
+            continue;
+        }
         let slot = if per_minute {
             minute
         } else {
@@ -825,5 +832,40 @@ mod tests {
             harness.run();
             assert!(*harness.state(), "{language:?}");
         }
+    }
+    #[test]
+    fn condense_skips_non_finite_and_negative_points() {
+        let slots = condense(
+            &[
+                (10, 20.0, 30.0),
+                (10, f32::NAN, 50.0),
+                (10, f32::INFINITY, 50.0),
+                (10, -5.0, 50.0),
+                (10, 20.0, f32::NAN),
+            ],
+            0,
+            60,
+            10,
+        );
+        assert_eq!(slots.len(), 1);
+        assert_eq!(slots[0].avg, 20.0);
+        assert_eq!(slots[0].peak, 30.0);
+        assert!(
+            condense(
+                &[(10, f32::NAN, 10.0), (11, 10.0, f32::INFINITY)],
+                0,
+                60,
+                10
+            )
+            .is_empty()
+        );
+        let multi = condense(
+            &[(10, 10.0, 15.0), (10, f32::NAN, 99.0), (10, 30.0, 40.0)],
+            0,
+            60,
+            10,
+        );
+        assert_eq!(multi[0].avg, 20.0);
+        assert_eq!(multi[0].peak, 40.0);
     }
 }

@@ -933,8 +933,10 @@ fn app_totals(data: &Data) -> Vec<App<'_, &ProcessInfo>> {
             memory: 0,
             instances: Vec::new(),
         });
-        a.cpu += p.cpu_percent;
-        a.memory += p.private_working_set;
+        if p.cpu_percent.is_finite() && p.cpu_percent >= 0.0 {
+            a.cpu += p.cpu_percent;
+        }
+        a.memory = a.memory.saturating_add(p.private_working_set);
         a.instances.push(p);
     }
     let mut out: Vec<_> = apps.into_values().collect();
@@ -2193,5 +2195,53 @@ mod tests {
         }
         d.snapshot = None;
         assert!(verdict(&d).is_none());
+    }
+    #[test]
+    fn app_totals_ignores_non_finite_and_negative_cpu() {
+        let make_proc = |pid, name: &str, cpu_percent, mem| ProcessInfo {
+            io: Default::default(),
+            cycle_percent: 0.0,
+            pid,
+            parent_pid: 0,
+            name: name.into(),
+            cpu_percent,
+            cpu_time: std::time::Duration::ZERO,
+            working_set: 0,
+            private_working_set: mem,
+            private_bytes: mem,
+            thread_count: 1,
+            handle_count: 1,
+            session_id: 1,
+            base_priority: 8,
+            gpu_percent: 0.0,
+            gpu_memory: 0,
+            io_read_rate: 0.0,
+            io_write_rate: 0.0,
+            net_rx_rate: 0.0,
+            net_tx_rate: 0.0,
+            create_time: 100,
+            suspended: false,
+            memory: Default::default(),
+            gpu_detail: Default::default(),
+        };
+        let d = Data {
+            snapshot: Some(std::sync::Arc::new(wtm_core::Snapshot {
+                processes: vec![
+                    make_proc(101, "worker.exe", 12.5, 100),
+                    make_proc(102, "Worker.exe", f32::NAN, 200),
+                    make_proc(103, "worker.exe", f32::INFINITY, 300),
+                    make_proc(104, "worker.exe", -5.0, 400),
+                ],
+                system: Default::default(),
+                interval: None,
+                taken_at_ms: 0,
+                net_traced: false,
+            })),
+            ..Default::default()
+        };
+        let totals = app_totals(&d);
+        assert_eq!(totals.len(), 1);
+        assert_eq!(totals[0].cpu, 12.5);
+        assert_eq!(totals[0].memory, 1000);
     }
 }

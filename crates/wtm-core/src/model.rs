@@ -144,12 +144,14 @@ impl ProcessInfo {
     }
 
     pub fn io_rate(&self) -> f64 {
-        self.io_read_rate + self.io_write_rate
+        let clean = |v: f64| if v.is_finite() && v >= 0.0 { v } else { 0.0 };
+        clean(self.io_read_rate) + clean(self.io_write_rate)
     }
 
     /// Network bytes per second, both directions.
     pub fn net_rate(&self) -> f64 {
-        self.net_rx_rate + self.net_tx_rate
+        let clean = |v: f64| if v.is_finite() && v >= 0.0 { v } else { 0.0 };
+        clean(self.net_rx_rate) + clean(self.net_tx_rate)
     }
 }
 
@@ -277,17 +279,21 @@ pub fn format_duration(d: Duration) -> String {
 }
 
 pub fn format_bytes(n: f64) -> String {
+    if !n.is_finite() {
+        return "0 B".to_owned();
+    }
     const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
-    let mut v = n;
+    let sign = if n < 0.0 { "-" } else { "" };
+    let mut v = n.abs();
     let mut unit = 0;
     while v >= 1024.0 && unit < UNITS.len() - 1 {
         v /= 1024.0;
         unit += 1;
     }
     if unit == 0 {
-        format!("{v:.0} B")
+        format!("{sign}{v:.0} B")
     } else {
-        format!("{v:.1} {}", UNITS[unit])
+        format!("{sign}{v:.1} {}", UNITS[unit])
     }
 }
 
@@ -414,5 +420,35 @@ mod tests {
             }
             println!("{key:?}: {:?} per sort of 2000", total / runs);
         }
+    }
+
+    #[test]
+    fn formats_negative_and_non_finite_bytes() {
+        assert_eq!(format_bytes(-0.0), "0 B");
+        assert_eq!(format_bytes(-512.0), "-512 B");
+        assert_eq!(format_bytes(-2.0 * 1024.0 * 1024.0), "-2.0 MiB");
+        assert_eq!(format_bytes(f64::NAN), "0 B");
+        assert_eq!(format_bytes(f64::INFINITY), "0 B");
+        assert_eq!(format_bytes(f64::NEG_INFINITY), "0 B");
+    }
+
+    #[test]
+    fn io_and_net_rates_ignore_non_finite_and_negative_halves() {
+        let mut p = proc(1, "a.exe", 0.0);
+        p.io_read_rate = 100.0;
+        p.io_write_rate = f64::NAN;
+        assert_eq!(p.io_rate(), 100.0);
+
+        p.io_read_rate = -50.0;
+        p.io_write_rate = f64::INFINITY;
+        assert_eq!(p.io_rate(), 0.0);
+
+        p.net_rx_rate = f64::NAN;
+        p.net_tx_rate = 250.0;
+        assert_eq!(p.net_rate(), 250.0);
+
+        p.net_rx_rate = f64::NEG_INFINITY;
+        p.net_tx_rate = -10.0;
+        assert_eq!(p.net_rate(), 0.0);
     }
 }

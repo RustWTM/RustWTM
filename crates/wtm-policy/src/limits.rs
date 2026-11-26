@@ -233,8 +233,10 @@ impl LimitPlanner {
             if let Some(g) = self.members.get(&(p.pid, p.create_time)) {
                 let e = by_group.entry(g).or_default();
                 e.0.push((p.pid, p.create_time));
-                e.1 += p.cpu_percent;
-                e.2 += p.private_bytes;
+                if p.cpu_percent.is_finite() && p.cpu_percent >= 0.0 {
+                    e.1 += p.cpu_percent;
+                }
+                e.2 = e.2.saturating_add(p.private_bytes);
             }
         }
         let mut out: Vec<GroupUsage> = by_group
@@ -587,5 +589,25 @@ cpu_cores = 4.0
                 .limits
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn usage_ignores_non_finite_and_negative_process_cpu() {
+        let mut ok = p(10, 1, "app.exe", 10);
+        ok.cpu_percent = 12.5;
+        let mut nan = p(11, 1, "app.exe", 11);
+        nan.cpu_percent = f32::NAN;
+        let mut inf = p(12, 1, "app.exe", 12);
+        inf.cpu_percent = f32::INFINITY;
+        let mut neg = p(13, 1, "app.exe", 13);
+        neg.cpu_percent = -5.0;
+
+        let procs = [ok, nan, inf, neg];
+        let mut planner = LimitPlanner::new(vec![limit("app.exe", LimitScope::Group)]);
+        planner.plan(&procs);
+        let usage = planner.usage(&procs);
+        assert_eq!(usage.len(), 1);
+        assert_eq!(usage[0].processes, 4);
+        assert_eq!(usage[0].cpu_percent, 12.5);
     }
 }

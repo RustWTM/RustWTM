@@ -235,11 +235,12 @@ impl Metrics {
     /// CPU as a share of every CPU the container can use, 0–100, whichever
     /// convention Docker reported it in.
     pub fn cpu_share(&self) -> Option<f32> {
-        let cpu = self.cpu?;
+        let cpu = self.cpu.filter(|c| c.is_finite() && *c >= 0.0)?;
         Some(match self.cpu_cores {
             Some(cores) if cores > 0 => cpu / cores as f32,
             _ => cpu,
         })
+        .filter(|s| s.is_finite())
     }
     /// Memory as a share of the container's limit, 0–100. Without a limit
     /// of its own, Docker reports the memory of its host or VM as the limit.
@@ -1041,5 +1042,29 @@ mod tests {
                 detail.logs.is_ok()
             );
         }
+    }
+
+    #[test]
+    fn cpu_share_rejects_non_finite_and_negative_cpu() {
+        for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -5.0] {
+            let m = Metrics {
+                cpu: Some(bad),
+                cpu_cores: Some(4),
+                ..Default::default()
+            };
+            assert_eq!(m.cpu_share(), None, "expected None for {bad}");
+        }
+        let ok = Metrics {
+            cpu: Some(200.0),
+            cpu_cores: Some(4),
+            ..Default::default()
+        };
+        assert_eq!(ok.cpu_share(), Some(50.0));
+        let no_cores = Metrics {
+            cpu: Some(40.0),
+            cpu_cores: None,
+            ..Default::default()
+        };
+        assert_eq!(no_cores.cpu_share(), Some(40.0));
     }
 }

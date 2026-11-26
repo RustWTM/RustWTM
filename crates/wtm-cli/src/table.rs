@@ -41,8 +41,8 @@ pub fn row(p: &ProcessInfo, width: usize, net: bool) -> String {
         "{:>7} {:>7} {:>6.1} {:>6.1} {:>10} {:>5} {:>7} {:>10}{net}  {}",
         p.pid,
         p.parent_pid,
-        p.cpu_percent,
-        p.gpu_percent,
+        clean_pct(p.cpu_percent),
+        clean_pct(p.gpu_percent),
         bytes(p.private_working_set as f64),
         p.thread_count,
         p.handle_count,
@@ -80,7 +80,7 @@ pub fn summary(s: &SystemStats) -> String {
     };
     format!(
         "CPU {:5.1}% ({} logical)   Memory {} / {} ({:.0}%)   Processes {}   Threads {}   Handles {}",
-        s.cpu_percent,
+        clean_pct(s.cpu_percent),
         s.logical_cpus,
         bytes(s.memory_used() as f64),
         bytes(s.memory_total as f64),
@@ -96,17 +96,21 @@ pub fn io_summary(s: &SystemStats) -> String {
     let busiest_disk = s
         .disks
         .iter()
-        .map(|d| d.active_percent)
+        .map(|d| clean_pct(d.active_percent))
         .fold(0.0f32, f32::max);
     format!(
         "GPU {:5.1}%   Network down {}/s up {}/s   Disk read {}/s write {}/s (busiest {:.0}% active)",
-        s.gpu_percent,
+        clean_pct(s.gpu_percent),
         bytes(s.net_rx_rate),
         bytes(s.net_tx_rate),
         bytes(s.io_read_rate),
         bytes(s.io_write_rate),
         busiest_disk
     )
+}
+
+fn clean_pct(v: f32) -> f32 {
+    if v.is_finite() && v >= 0.0 { v } else { 0.0 }
 }
 
 pub fn bytes(n: f64) -> String {
@@ -207,5 +211,57 @@ mod tests {
         assert!(!header(false).contains("NET"));
         assert!(network_note(false).contains("n/a"));
         assert!(network_note(true).is_empty());
+    }
+    #[test]
+    fn formats_non_finite_and_negative_cpu_and_gpu_as_zero() {
+        let mut s = SystemStats {
+            cpu_percent: f32::NAN,
+            gpu_percent: f32::INFINITY,
+            logical_cpus: 4,
+            disks: vec![wtm_core::DiskUsage {
+                active_percent: -10.0,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let sum_line = summary(&s);
+        let io_line = io_summary(&s);
+        assert!(sum_line.contains("CPU   0.0%"), "{sum_line}");
+        assert!(io_line.contains("GPU   0.0%"), "{io_line}");
+        assert!(io_line.contains("busiest 0% active"), "{io_line}");
+
+        s.cpu_percent = -5.0;
+        s.gpu_percent = f32::NEG_INFINITY;
+        assert!(summary(&s).contains("CPU   0.0%"));
+        assert!(io_summary(&s).contains("GPU   0.0%"));
+
+        let p = ProcessInfo {
+            io: Default::default(),
+            cycle_percent: 0.0,
+            pid: 12,
+            parent_pid: 1,
+            name: "bad.exe".into(),
+            cpu_percent: f32::NAN,
+            cpu_time: std::time::Duration::ZERO,
+            working_set: 0,
+            private_working_set: 0,
+            private_bytes: 0,
+            thread_count: 1,
+            handle_count: 1,
+            session_id: 1,
+            base_priority: 8,
+            gpu_percent: -1.0,
+            gpu_memory: 0,
+            io_read_rate: 0.0,
+            io_write_rate: 0.0,
+            net_rx_rate: 0.0,
+            net_tx_rate: 0.0,
+            suspended: false,
+            create_time: 0,
+            memory: Default::default(),
+            gpu_detail: Default::default(),
+        };
+        let line = row(&p, 120, false);
+        assert!(!line.contains("NaN") && !line.contains("-1.0"), "{line}");
     }
 }

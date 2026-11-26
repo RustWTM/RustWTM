@@ -6,6 +6,31 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.41.1] - 2026-11-27
+
+[Release scope and validation](docs/0.41.1-review.md)
+
+Fifty reliability, numeric-sanitization, overflow-safety, and policy/UI
+hardening fixes across all workspace crates.
+
+### Fixed
+
+- **Non-finite and negative metric sanitization**: Guarded CPU, GPU, disk,
+  network, I/O, sensor, and rate calculations and display formatting
+  against `NaN`, `Infinity`, and negative values across `wtm-core`,
+  `wtm-sys`, `wtm-policy`, `wtm-ipc`, `wtm-service`, `wtm-cli`, `wtm-ai`,
+  and `wtm-gui` (including incident frames, IPC `SystemPoint`, Telegram
+  reports, AI tool summaries, CLI tables, service history series,
+  governor/reserve/kill/game-mode ticks, overview, resource strip,
+  device history, and container history).
+- **Integer overflow and boundary safety**: Replaced unchecked `u64` /
+  `u32` / `Duration` arithmetic with saturating or checked operations in
+  process sampling, disk scan assembly, memory composition/map totals,
+  thread CPU totals, job accounting, and startup/port/Docker parsing.
+- **Policy, redaction, and UI correctness**: Fixed rule/insight edge
+  cases, AI redaction and support-bundle handling, i18n/theme/alert
+  behaviors, and service limit/history/Telegram edge cases.
+
 ## [0.41.0] - 2026-11-24
 
 [Release scope and validation](docs/0.41.0-review.md)

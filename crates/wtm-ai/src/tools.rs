@@ -544,12 +544,16 @@ fn service_snapshot() -> Option<Snapshot> {
     }
 }
 
+fn clean_pct(v: f32) -> f32 {
+    if v.is_finite() && v >= 0.0 { v } else { 0.0 }
+}
+
 /// CPU, memory and disk load of the whole machine, no process named.
 pub fn totals_text(snap: &Snapshot) -> String {
     let s = &snap.system;
     let mut out = format!(
         "CPU {:.0}% of {} logical processors\nmemory {} of {} in use\n",
-        s.cpu_percent,
+        clean_pct(s.cpu_percent),
         s.logical_cpus,
         format_bytes(s.memory_used() as f64),
         format_bytes(s.memory_total as f64)
@@ -558,7 +562,7 @@ pub fn totals_text(snap: &Snapshot) -> String {
         out.push_str(&format!(
             "disk {}: {:.0}% busy, read {}/s, write {}/s\n",
             d.name,
-            d.active_percent,
+            clean_pct(d.active_percent),
             format_bytes(d.read_rate),
             format_bytes(d.write_rate)
         ));
@@ -635,7 +639,7 @@ pub fn process_line(p: &ProcessInfo, net: bool) -> String {
         "{} (PID {}): CPU {:.1}%, memory {}, disk {}/s{network}{suspended}, create_time {}",
         p.name,
         p.pid,
-        p.cpu_percent,
+        clean_pct(p.cpu_percent),
         format_bytes(p.private_working_set as f64),
         format_bytes(p.io_rate()),
         p.create_time
@@ -683,7 +687,7 @@ pub fn process_report(t: &ProcessRef, snap: &Snapshot, command_lines: bool) -> S
         }
         out.push(format!(
             "usage: CPU {:.1}%, private memory {}, working set {}, disk {}/s{}, GPU {:.0}%, {} threads, {} handles{}",
-            p.cpu_percent,
+            clean_pct(p.cpu_percent),
             format_bytes(p.private_working_set as f64),
             format_bytes(p.working_set as f64),
             format_bytes(p.io_rate()),
@@ -692,7 +696,7 @@ pub fn process_report(t: &ProcessRef, snap: &Snapshot, command_lines: bool) -> S
             } else {
                 String::new()
             },
-            p.gpu_percent,
+            clean_pct(p.gpu_percent),
             p.thread_count,
             p.handle_count,
             if p.suspended { ", SUSPENDED" } else { "" },
@@ -891,7 +895,7 @@ pub fn process_tree(t: &ProcessRef, procs: &[ProcessInfo]) -> String {
                 d.name,
                 d.pid,
                 d.parent_pid,
-                d.cpu_percent,
+                clean_pct(d.cpu_percent),
                 format_bytes(d.private_working_set as f64)
             ));
         }
@@ -1031,10 +1035,10 @@ pub fn app_history(hours: u32) -> Result<String, String> {
                     "  {}: running {} min, CPU avg {:.1}% (p95 {:.1}%, peak {:.0}%), GPU avg {:.1}%, memory avg {} (peak {}, growth {}/h)\n",
                     s.app,
                     s.minutes,
-                    s.cpu_avg,
-                    s.cpu_p95,
-                    s.cpu_peak,
-                    s.gpu_avg,
+                    clean_pct(s.cpu_avg),
+                    clean_pct(s.cpu_p95),
+                    clean_pct(s.cpu_peak),
+                    clean_pct(s.gpu_avg),
                     format_bytes(s.mem_avg as f64),
                     format_bytes(s.mem_peak as f64),
                     format_bytes(s.mem_growth_per_hour),
@@ -1238,5 +1242,60 @@ mod tests {
             .collect();
         assert_eq!(names.len(), READ_ONLY_TOOLS.len());
         assert!(names.iter().all(|n| !CONTROL_TOOLS.contains(&n.as_str())));
+    }
+    #[test]
+    fn formats_non_finite_and_negative_percentages_as_zero() {
+        let mut p = ProcessInfo {
+            io: Default::default(),
+            cycle_percent: 0.0,
+            pid: 42,
+            parent_pid: 1,
+            name: "worker.exe".into(),
+            cpu_percent: f32::NAN,
+            cpu_time: std::time::Duration::ZERO,
+            working_set: 0,
+            private_working_set: 1024,
+            private_bytes: 1024,
+            thread_count: 1,
+            handle_count: 1,
+            session_id: 1,
+            base_priority: 8,
+            gpu_percent: f32::INFINITY,
+            gpu_memory: 0,
+            io_read_rate: 0.0,
+            io_write_rate: 0.0,
+            net_rx_rate: 0.0,
+            net_tx_rate: 0.0,
+            create_time: 100,
+            suspended: false,
+            memory: Default::default(),
+            gpu_detail: Default::default(),
+        };
+        assert!(process_line(&p, false).contains("CPU 0.0%"));
+        let snap = Snapshot {
+            processes: vec![p.clone()],
+            system: wtm_core::SystemStats {
+                cpu_percent: f32::NEG_INFINITY,
+                logical_cpus: 4,
+                disks: vec![wtm_core::DiskUsage {
+                    name: "C:".into(),
+                    active_percent: -10.0,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            interval: None,
+            taken_at_ms: 0,
+            net_traced: false,
+        };
+        let tot = totals_text(&snap);
+        assert!(tot.contains("CPU 0%") && tot.contains("0% busy"), "{tot}");
+        p.cpu_percent = -3.0;
+        let snap2 = Snapshot {
+            processes: vec![p.clone()],
+            ..snap
+        };
+        let rep = process_report(&ProcessRef::from(&p), &snap2, false);
+        assert!(rep.contains("CPU 0.0%") && rep.contains("GPU 0%"), "{rep}");
     }
 }

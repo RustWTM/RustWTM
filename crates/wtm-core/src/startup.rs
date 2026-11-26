@@ -185,7 +185,19 @@ pub fn executable(command: &str, var: impl Fn(&str) -> Option<String>) -> Option
         &rest[..rest.find('"')?]
     } else {
         let lower = command.to_ascii_lowercase();
-        let end = lower.find(".exe").map(|i| i + 4)?;
+        let mut from = 0;
+        let end = loop {
+            let rel = lower[from..].find(".exe")?;
+            let end = from + rel + 4;
+            if command[end..]
+                .chars()
+                .next()
+                .is_none_or(char::is_whitespace)
+            {
+                break end;
+            }
+            from = end;
+        };
         &command[..end]
     };
     let mut out = String::new();
@@ -383,5 +395,20 @@ mod tests {
     fn lists_real_startup_without_errors() {
         // Content is machine-specific; this only checks it does not fail.
         let _ = list_startup();
+    }
+
+    #[test]
+    fn executable_requires_word_boundary_after_exe() {
+        let no_var = |_: &str| None;
+        assert_eq!(executable(r"C:\Apps\tool.exe.bak --flag", no_var), None);
+        assert_eq!(executable(r"C:\Apps\tool.exe.old", no_var), None);
+        assert_eq!(
+            executable(r"C:\Dir.exe\real.exe --tray", no_var).as_deref(),
+            Some(r"C:\Dir.exe\real.exe")
+        );
+        assert_eq!(
+            executable(r"C:\Apps\app.exe", no_var).as_deref(),
+            Some(r"C:\Apps\app.exe")
+        );
     }
 }

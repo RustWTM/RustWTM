@@ -127,8 +127,10 @@ fn running_apps(data: &Data) -> Vec<(String, f32, u64)> {
         let e = apps
             .entry(p.name.to_lowercase())
             .or_insert_with(|| (p.name.clone(), 0.0, 0));
-        e.1 += p.cpu_percent;
-        e.2 += p.private_bytes;
+        if p.cpu_percent.is_finite() && p.cpu_percent >= 0.0 {
+            e.1 += p.cpu_percent;
+        }
+        e.2 = e.2.saturating_add(p.private_bytes);
     }
     let mut out: Vec<_> = apps.into_values().collect();
     out.sort_by(|a, b| b.1.total_cmp(&a.1).then(b.2.cmp(&a.2)));
@@ -679,5 +681,53 @@ mod tests {
         v.gb = 6.0;
         let new = Config::from_toml(&v.apply(text).unwrap()).unwrap();
         assert_eq!(new.limits.len(), 2);
+    }
+    #[test]
+    fn running_apps_ignores_non_finite_and_negative_cpu() {
+        let make_proc = |pid, name: &str, cpu_percent, mem| wtm_core::ProcessInfo {
+            io: Default::default(),
+            cycle_percent: 0.0,
+            pid,
+            parent_pid: 0,
+            name: name.into(),
+            cpu_percent,
+            cpu_time: std::time::Duration::ZERO,
+            working_set: 0,
+            private_working_set: mem,
+            private_bytes: mem,
+            thread_count: 1,
+            handle_count: 1,
+            session_id: 1,
+            base_priority: 8,
+            gpu_percent: 0.0,
+            gpu_memory: 0,
+            io_read_rate: 0.0,
+            io_write_rate: 0.0,
+            net_rx_rate: 0.0,
+            net_tx_rate: 0.0,
+            create_time: 100,
+            suspended: false,
+            memory: Default::default(),
+            gpu_detail: Default::default(),
+        };
+        let d = Data {
+            snapshot: Some(std::sync::Arc::new(wtm_core::Snapshot {
+                processes: vec![
+                    make_proc(101, "worker.exe", 12.5, 100),
+                    make_proc(102, "Worker.exe", f32::NAN, 200),
+                    make_proc(103, "worker.exe", f32::INFINITY, 300),
+                    make_proc(104, "worker.exe", -5.0, 400),
+                ],
+                system: Default::default(),
+                interval: None,
+                taken_at_ms: 0,
+                net_traced: false,
+            })),
+            ..Default::default()
+        };
+        let apps = running_apps(&d);
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].1, 12.5);
+        assert_eq!(apps[0].2, 1000);
     }
 }

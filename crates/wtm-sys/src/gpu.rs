@@ -259,6 +259,9 @@ impl<'a> Aggregate<'a> {
     }
 
     fn engine(&mut self, name: &str, v: f64) {
+        if !v.is_finite() || v < 0.0 {
+            return;
+        }
         let Some((pid, engine, engtype)) = parse_engine_instance(name) else {
             return;
         };
@@ -790,6 +793,50 @@ mod tests {
                 .values()
                 .all(|u| (0.0..=100.0).contains(&u.percent))
         );
+    }
+
+    #[test]
+    fn ignores_non_finite_and_negative_engine_samples() {
+        let engines = [
+            (
+                "pid_100_luid_0x0_0x1_phys_0_eng_0_engtype_3D".to_owned(),
+                f64::NAN,
+            ),
+            (
+                "pid_101_luid_0x0_0x1_phys_0_eng_0_engtype_3D".to_owned(),
+                f64::INFINITY,
+            ),
+            (
+                "pid_102_luid_0x0_0x1_phys_0_eng_0_engtype_3D".to_owned(),
+                -5.0,
+            ),
+            (
+                "pid_103_luid_0x0_0x1_phys_0_eng_0_engtype_Copy".to_owned(),
+                150.0,
+            ),
+            (
+                "pid_104_luid_0x0_0x1_phys_0_eng_1_engtype_VideoDecode".to_owned(),
+                22.5,
+            ),
+        ];
+        let sample = aggregate(&engines, &[]);
+
+        assert_eq!(sample.adapters[0].percent, 100.0);
+        assert_eq!(sample.per_process.get(&100), None);
+        assert_eq!(sample.per_process.get(&101), None);
+        assert_eq!(sample.per_process.get(&102), None);
+        assert_eq!(sample.per_process[&103].percent, 100.0);
+        assert_eq!(sample.per_process[&104].percent, 22.5);
+        let eng_pct = |label: &str| {
+            sample
+                .engines
+                .iter()
+                .find(|(name, _)| name == label)
+                .map(|(_, pct)| *pct)
+        };
+        assert_eq!(eng_pct("3D"), None);
+        assert_eq!(eng_pct("Copy"), Some(100.0));
+        assert_eq!(eng_pct("VideoDecode"), Some(22.5));
     }
 }
 /// A physical adapter's session LUID and DXGI identity. Re-enumerate after hotplug.

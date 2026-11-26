@@ -1110,11 +1110,14 @@ pub fn chart_scale(ui: &mut Ui, left: &str, right: &str) {
 /// The top of a byte-rate scale: the smallest 1-2-5 step (in binary units,
 /// from 1 KiB/s) that holds `peak`, so the scale moves in calm jumps.
 pub fn rate_ceiling(peak: f64) -> f64 {
+    if !peak.is_finite() || peak <= 1024.0 {
+        return 1024.0;
+    }
     let mut unit = 1024.0;
     loop {
         for step in [1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0] {
             let ceiling = unit * step;
-            if peak.is_nan() || peak <= ceiling {
+            if peak <= ceiling {
                 return ceiling;
             }
         }
@@ -2020,5 +2023,16 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn rate_ceiling_returns_finite_floor_for_non_finite_or_negative_peaks() {
+        assert_eq!(rate_ceiling(f64::NAN), 1024.0);
+        assert_eq!(rate_ceiling(f64::INFINITY), 1024.0);
+        assert_eq!(rate_ceiling(f64::NEG_INFINITY), 1024.0);
+        assert_eq!(rate_ceiling(-50.0), 1024.0);
+        assert_eq!(rate_ceiling(500.0), 1024.0);
+        assert_eq!(rate_ceiling(1500.0), 2048.0);
+        assert_eq!(rate_ceiling(1024.0 * 1024.0 * 3.0), 1024.0 * 1024.0 * 5.0);
     }
 }

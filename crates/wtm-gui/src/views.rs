@@ -35,8 +35,10 @@ pub fn users(ui: &mut Ui, data: &Data) -> Option<(u32, String, crate::backend::S
         for p in &snap.processes {
             let t = totals.entry(p.session_id).or_default();
             t.0 += 1;
-            t.1 += p.cpu_percent;
-            t.2 += p.private_working_set;
+            if p.cpu_percent.is_finite() && p.cpu_percent >= 0.0 {
+                t.1 += p.cpu_percent;
+            }
+            t.2 = t.2.saturating_add(p.private_working_set);
         }
     }
 
@@ -1638,4 +1640,72 @@ pub fn startup(
         marks.store(ui, "startup");
     }
     command
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn users_ignores_non_finite_and_negative_process_cpu() {
+        use egui_kittest::kittest::Queryable;
+        let make_proc = |pid, cpu_percent, mem| wtm_core::ProcessInfo {
+            io: Default::default(),
+            cycle_percent: 0.0,
+            pid,
+            parent_pid: 0,
+            name: "app.exe".into(),
+            cpu_percent,
+            cpu_time: std::time::Duration::ZERO,
+            working_set: 0,
+            private_working_set: mem,
+            private_bytes: mem,
+            thread_count: 1,
+            handle_count: 1,
+            session_id: 1,
+            base_priority: 8,
+            gpu_percent: 0.0,
+            gpu_memory: 0,
+            io_read_rate: 0.0,
+            io_write_rate: 0.0,
+            net_rx_rate: 0.0,
+            net_tx_rate: 0.0,
+            suspended: false,
+            create_time: 100,
+            memory: Default::default(),
+            gpu_detail: Default::default(),
+        };
+        let sessions = vec![wtm_core::Session {
+            id: 1,
+            user: "ersin".into(),
+            domain: String::new(),
+            station: "Console".into(),
+            state: wtm_core::SessionState::Active,
+        }];
+        let data = Data {
+            sessions: Some(Ok(sessions)),
+            snapshot: Some(std::sync::Arc::new(wtm_core::Snapshot {
+                processes: vec![
+                    make_proc(10, 12.5, 1024),
+                    make_proc(11, f32::NAN, 1024),
+                    make_proc(12, f32::INFINITY, 1024),
+                    make_proc(13, -5.0, 1024),
+                ],
+                system: Default::default(),
+                interval: None,
+                taken_at_ms: 0,
+                net_traced: false,
+            })),
+            ..Data::default()
+        };
+        let mut h = egui_kittest::Harness::builder()
+            .allow_missing_glyphs()
+            .with_size([1100.0, 400.0])
+            .build_ui(|ui| {
+                let _ = users(ui, &data);
+            });
+        h.run();
+        assert!(h.query_by_label_contains("NaN").is_none());
+        assert!(h.query_by_label_contains("inf").is_none());
+        assert!(h.query_by_label_contains("12.5%").is_some());
+    }
 }

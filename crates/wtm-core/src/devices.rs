@@ -466,10 +466,11 @@ pub fn collect() -> Result<Report, String> {
 pub fn rate(before: Option<(u64, f64)>, at: u64, total: Option<f64>) -> Option<f64> {
     let ((old_at, old), now) = (before?, total?);
     let elapsed = at.checked_sub(old_at)?;
-    if !(500..=120_000).contains(&elapsed) || now < old {
+    if !(500..=120_000).contains(&elapsed) || !old.is_finite() || !now.is_finite() || now < old {
         return None;
     }
-    Some((now - old) * 1000.0 / elapsed as f64)
+    let per_sec = (now - old) * 1000.0 / elapsed as f64;
+    per_sec.is_finite().then_some(per_sec)
 }
 
 #[cfg(test)]
@@ -630,6 +631,16 @@ mod tests {
             parse(serde_json::json!({"devices":[],"warnings":["Battery unavailable"]})).unwrap();
         assert!(r.devices.is_empty());
         assert_eq!(r.warnings.len(), 1);
+    }
+
+    #[test]
+    fn rate_rejects_non_finite_samples() {
+        assert_eq!(rate(Some((0, 100.0)), 1000, Some(250.0)), Some(150.0));
+        assert_eq!(rate(Some((0, 100.0)), 1000, Some(f64::NAN)), None);
+        assert_eq!(rate(Some((0, f64::NAN)), 1000, Some(250.0)), None);
+        assert_eq!(rate(Some((0, 100.0)), 1000, Some(f64::INFINITY)), None);
+        assert_eq!(rate(Some((0, f64::NEG_INFINITY)), 1000, Some(250.0)), None);
+        assert_eq!(rate(Some((0, -f64::MAX)), 1000, Some(f64::MAX)), None);
     }
 }
 #[cfg(test)]

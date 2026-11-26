@@ -72,7 +72,7 @@ pub fn rows(
     let capacity = elapsed_secs * 1e7 * f64::from(logical.max(1));
     now.iter()
         .map(|t| {
-            let cpu_time = t.kernel_time + t.user_time;
+            let cpu_time = t.kernel_time.saturating_add(t.user_time);
             let prev = before
                 .iter()
                 .find(|b| b.tid == t.tid && b.create_time == t.create_time);
@@ -428,5 +428,21 @@ mod tests {
         let d = data.lock().unwrap();
         let panel = d.threads.as_ref().unwrap();
         assert!(panel.rows.is_empty() && panel.error.is_some());
+    }
+    #[test]
+    fn rows_saturates_thread_cpu_time_without_overflow() {
+        let out = rows(
+            &[],
+            &[ThreadInfo {
+                tid: 1,
+                kernel_time: u64::MAX - 10,
+                user_time: 100,
+                ..ThreadInfo::default()
+            }],
+            1.0,
+            4,
+            |_| None,
+        );
+        assert_eq!(out[0].cpu_time, u64::MAX);
     }
 }

@@ -227,8 +227,8 @@ fn assemble(found: Vec<Found>, ids: usize) -> Option<DirNode> {
         };
         sort_children(&mut node);
         if let Some((_, p)) = slots.get_mut(parent).and_then(Option::as_mut) {
-            p.size += node.size;
-            p.files += node.files;
+            p.size = p.size.saturating_add(node.size);
+            p.files = p.files.saturating_add(node.files);
             p.children.push(node);
         }
     }
@@ -649,5 +649,35 @@ mod tests {
             (TYPES_KEPT + 5) as u64
         );
         assert!(r.largest.is_empty());
+    }
+    #[test]
+    fn assemble_saturates_huge_sizes_and_counts() {
+        let root = assemble(
+            vec![
+                (
+                    0,
+                    usize::MAX,
+                    DirNode {
+                        size: u64::MAX - 10,
+                        files: u64::MAX - 1,
+                        ..DirNode::default()
+                    },
+                ),
+                (
+                    1,
+                    0,
+                    DirNode {
+                        size: 100,
+                        files: 5,
+                        ..DirNode::default()
+                    },
+                ),
+            ],
+            2,
+        )
+        .unwrap();
+        assert_eq!(root.size, u64::MAX);
+        assert_eq!(root.files, u64::MAX);
+        assert_eq!(root.children.len(), 1);
     }
 }

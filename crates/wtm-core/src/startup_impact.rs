@@ -175,10 +175,26 @@ fn attribute(tag: &str, name: &str) -> Option<String> {
 
 /// The start tag and text of the first `<name …>text</name>` in `body`.
 fn element<'a>(body: &'a str, name: &str) -> Option<(&'a str, &'a str)> {
-    let open = body.find(&format!("<{name}"))?;
-    let tag_end = open + body[open..].find('>')?;
-    let close = tag_end + body[tag_end..].find(&format!("</{name}>"))?;
-    Some((&body[open..tag_end], body[tag_end + 1..close].trim()))
+    let prefix = format!("<{name}");
+    let close_tag = format!("</{name}>");
+    let mut search_from = 0;
+    while let Some(rel) = body[search_from..].find(&prefix) {
+        let open = search_from + rel;
+        let after_name = open + prefix.len();
+        let next = body[after_name..].chars().next();
+        if !matches!(next, Some('>' | ' ' | '\t' | '\r' | '\n' | '/')) {
+            search_from = after_name;
+            continue;
+        }
+        let tag_end = open + body[open..].find('>')?;
+        if body[..tag_end].ends_with('/') {
+            search_from = tag_end + 1;
+            continue;
+        }
+        let close = tag_end + body[tag_end..].find(&close_tag)?;
+        return Some((&body[open..tag_end], body[tag_end + 1..close].trim()));
+    }
+    None
 }
 
 fn number(body: &str, name: &str) -> Option<(u64, Option<String>)> {
@@ -207,11 +223,18 @@ pub fn parse(text: &str) -> Vec<(String, BootUsage)> {
         let Some(tag_end) = rest.find('>') else {
             break;
         };
-        let Some(close) = rest.find("</Process>") else {
-            break;
+        let (tag, body) = if rest[..tag_end].ends_with('/') {
+            let tag = &rest[..tag_end];
+            rest = &rest[tag_end + 1..];
+            (tag, "")
+        } else {
+            let Some(close) = rest.find("</Process>") else {
+                break;
+            };
+            let pair = (&rest[..tag_end], &rest[tag_end.min(close)..close]);
+            rest = &rest[close + "</Process>".len()..];
+            pair
         };
-        let (tag, body) = (&rest[..tag_end], &rest[tag_end.min(close)..close]);
-        rest = &rest[close + "</Process>".len()..];
         let (Some(path), Some(pid)) = (
             attribute(tag, "Name"),
             attribute(tag, "PID").and_then(|p| p.parse::<u32>().ok()),
@@ -418,5 +441,52 @@ mod tests {
         assert!(read_for(&dir.join("missing"), me).unwrap().is_empty());
         assert!(read_for(&dir, "..").is_err());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ignores_prefix_named_and_self_closing_tags() {
+        let xml = report(&["<Process Name=\"C:\\Apps\\App.exe\" PID=\"200\">\n\
+             <StartTime>t1</StartTime>\n\
+             <CpuUsageExtra Units=\"us\">999</CpuUsageExtra>\n\
+             <CpuUsage Units=\"us\"/>\n\
+             <CpuUsage Units=\"us\">500000</CpuUsage>\n\
+             <DiskUsage Units=\"bytes\">1000</DiskUsage>\n\
+             </Process>"
+            .to_owned()]);
+        let parsed = parse(&xml);
+        assert_eq!(parsed[0].1.cpu_us, 500_000);
+        assert_eq!(parsed[0].1.disk_bytes, 1_000);
+    }
+
+    #[test]
+    fn parses_self_closing_process_tags_without_swallowing_next() {
+        let xml = r#"<Boot>
+<Process Name="C:\empty.exe" PID="1" />
+<Process Name="C:\no_space.exe" PID="2"/>
+<Process Name="C:\real.exe" PID="3"><CpuUsage>500</CpuUsage><DiskUsage>1024</DiskUsage></Process>
+</Boot>"#;
+        let got = parse(xml);
+        assert_eq!(got.len(), 3);
+        assert_eq!(
+            got.iter().find(|(p, _)| p == r"c:\empty.exe").unwrap().1,
+            BootUsage {
+                cpu_us: 0,
+                disk_bytes: 0
+            }
+        );
+        assert_eq!(
+            got.iter().find(|(p, _)| p == r"c:\no_space.exe").unwrap().1,
+            BootUsage {
+                cpu_us: 0,
+                disk_bytes: 0
+            }
+        );
+        assert_eq!(
+            got.iter().find(|(p, _)| p == r"c:\real.exe").unwrap().1,
+            BootUsage {
+                cpu_us: 500,
+                disk_bytes: 1024
+            }
+        );
     }
 }

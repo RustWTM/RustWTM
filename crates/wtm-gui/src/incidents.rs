@@ -136,10 +136,10 @@ impl View {
                         }
                         let value = match metric {
                             1 => f.memory as f64,
-                            2 => f64::from(f.gpu),
-                            3 => f.io,
-                            4 => f.network,
-                            _ => f64::from(f.cpu),
+                            2 => f64::from(clean_pct(f.gpu)),
+                            3 => clean_rate(f.io),
+                            4 => clean_rate(f.network),
+                            _ => f64::from(clean_pct(f.cpu)),
                         };
                         points.push([f.at.saturating_sub(start) as f64 / 1000.0, value]);
                         last = Some(f.at);
@@ -215,10 +215,10 @@ impl View {
                             ui.strong(stamp);
                             ui.label(format!(
                                 "CPU {} · RAM {} / {} · GPU {}",
-                                crate::i18n::percent(format!("{:.0}", f.cpu)),
+                                crate::i18n::percent(format!("{:.0}", clean_pct(f.cpu))),
                                 crate::i18n::bytes(f.memory as f64),
                                 crate::i18n::bytes(f.memory_total as f64),
-                                crate::i18n::percent(format!("{:.0}", f.gpu))
+                                crate::i18n::percent(format!("{:.0}", clean_pct(f.gpu)))
                             ));
                             if f.partial {
                                 crate::theme::colored(
@@ -235,7 +235,7 @@ impl View {
                                     ui.weak(format!(
                                         "PID {} · CPU {} · {}",
                                         p.target.pid,
-                                        crate::i18n::percent(format!("{:.1}", p.cpu)),
+                                        crate::i18n::percent(format!("{:.1}", clean_pct(p.cpu))),
                                         crate::i18n::bytes(p.memory as f64)
                                     ));
                                     let live = data.snapshot.as_ref().is_some_and(|s| {
@@ -324,6 +324,14 @@ impl View {
         }
         reveal
     }
+}
+
+fn clean_pct(v: f32) -> f32 {
+    if v.is_finite() && v >= 0.0 { v } else { 0.0 }
+}
+
+fn clean_rate(v: f64) -> f64 {
+    if v.is_finite() && v >= 0.0 { v } else { 0.0 }
 }
 
 #[cfg(test)]
@@ -455,5 +463,35 @@ mod tests {
         assert!(view.task.busy());
         frame(&mut view);
         assert!(view.frames.is_some());
+    }
+    #[test]
+    fn sanitizes_non_finite_and_negative_percentages() {
+        use egui_kittest::kittest::Queryable;
+        let mut view = View::fixture();
+        {
+            let Ok(replay) = view.frames.as_mut().unwrap() else {
+                unreachable!()
+            };
+            let last = replay.frames.last_mut().unwrap();
+            last.cpu = f32::NAN;
+            last.gpu = f32::INFINITY;
+            last.io = f64::NAN;
+            last.network = -10.0;
+            last.processes[0].cpu = -5.0;
+        }
+        let data = crate::backend::Data::default();
+        let mut h = egui_kittest::Harness::builder()
+            .allow_missing_glyphs()
+            .with_size([900.0, 600.0])
+            .build_ui(|ui| {
+                let _ = view.show(ui, &data);
+            });
+        h.run();
+        assert!(h.query_by_label_contains("NaN").is_none());
+        assert!(h.query_by_label_contains("inf%").is_none());
+        assert!(h.query_by_label_contains("-5.0%").is_none());
+        assert!(h.query_by_label_contains("CPU 0%").is_some());
+        assert!(h.query_by_label_contains("GPU 0%").is_some());
+        assert!(h.query_by_label_contains("CPU 0.0%").is_some());
     }
 }

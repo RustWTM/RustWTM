@@ -151,7 +151,9 @@ pub fn breakdown(
     Some(CpuBreakdown {
         dpc_percent: share(dpc),
         interrupt_percent: share(interrupt),
-        interrupts_per_sec: (secs > 0.0).then(|| count as f64 / secs),
+        interrupts_per_sec: (secs.is_finite() && secs > 0.0)
+            .then(|| count as f64 / secs)
+            .filter(|rate| rate.is_finite()),
     })
 }
 
@@ -516,5 +518,33 @@ mod tests {
             breakdown(&before, &after, 0.0).unwrap().interrupts_per_sec,
             None
         );
+    }
+
+    #[test]
+    fn breakdown_rejects_non_finite_or_tiny_intervals() {
+        let t = |kernel, user, dpc, interrupt, interrupts| wtm_sys::system::CpuTimes {
+            kernel,
+            user,
+            dpc,
+            interrupt,
+            interrupts,
+            ..Default::default()
+        };
+        let a = [t(100, 100, 10, 20, 100)];
+        let b = [t(200, 200, 20, 30, 1100)];
+        assert_eq!(
+            breakdown(&a, &b, 2.0).unwrap().interrupts_per_sec,
+            Some(500.0)
+        );
+        assert_eq!(
+            breakdown(&a, &b, f64::NAN).unwrap().interrupts_per_sec,
+            None
+        );
+        assert_eq!(
+            breakdown(&a, &b, f64::INFINITY).unwrap().interrupts_per_sec,
+            None
+        );
+        assert_eq!(breakdown(&a, &b, -1.0).unwrap().interrupts_per_sec, None);
+        assert_eq!(breakdown(&a, &b, 1e-308).unwrap().interrupts_per_sec, None);
     }
 }

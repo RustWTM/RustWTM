@@ -244,6 +244,9 @@ impl KillWatch {
         system_cpu: f32,
         command_line: &mut dyn FnMut(&ProcessInfo) -> Option<String>,
     ) -> Vec<Decision> {
+        if !system_cpu.is_finite() {
+            return Vec::new();
+        }
         let mut out = Vec::new();
         // Entry and process pairs over their threshold right now; every other
         // timer is dropped at the end, which spares a removal per process.
@@ -257,7 +260,8 @@ impl KillWatch {
             }
             for p in procs {
                 let key = (p.pid, p.create_time);
-                if p.cpu_percent < threshold
+                if !p.cpu_percent.is_finite()
+                    || p.cpu_percent < threshold
                     || self.ended.contains(&key)
                     || protection_reason(p.pid, &p.name).is_some()
                     || !e.matches(p, command_line)
@@ -661,5 +665,71 @@ mod tests {
         assert!(!empty.contains("[[kill]]"));
         assert_eq!(remove_kill_entry(&empty, 5).unwrap(), empty);
         assert!(remove_kill_entry("x = [", 0).is_err());
+    }
+    #[test]
+    fn ignores_non_finite_cpu_samples() {
+        let t0 = Instant::now();
+        let entry = KillEntry {
+            name: "hog.exe".into(),
+            cpu_above: Some(50.0),
+            for_secs: 5,
+            system_cpu_above: Some(80.0),
+            ..KillEntry::default()
+        };
+        let make_proc = |cpu_percent| ProcessInfo {
+            io: Default::default(),
+            cycle_percent: 0.0,
+            pid: 10,
+            parent_pid: 1,
+            name: "hog.exe".into(),
+            cpu_percent,
+            cpu_time: Duration::ZERO,
+            working_set: 0,
+            private_working_set: 0,
+            private_bytes: 0,
+            thread_count: 1,
+            handle_count: 1,
+            session_id: 1,
+            base_priority: 8,
+            gpu_percent: 0.0,
+            gpu_memory: 0,
+            io_read_rate: 0.0,
+            io_write_rate: 0.0,
+            net_rx_rate: 0.0,
+            net_tx_rate: 0.0,
+            suspended: false,
+            create_time: 10,
+            memory: Default::default(),
+            gpu_detail: Default::default(),
+        };
+        let procs = [make_proc(60.0)];
+
+        let mut w = KillWatch::new(vec![entry]);
+        assert!(w.tick(t0, &procs, 90.0, &mut |_| None).is_empty());
+        assert!(
+            w.tick(t0 + Duration::from_secs(2), &procs, f32::NAN, &mut |_| None)
+                .is_empty()
+        );
+        assert!(
+            !w.tick(t0 + Duration::from_secs(5), &procs, 90.0, &mut |_| None)
+                .is_empty()
+        );
+
+        let entry_no_sys = KillEntry {
+            name: "hog.exe".into(),
+            cpu_above: Some(50.0),
+            for_secs: 0,
+            system_cpu_above: None,
+            ..KillEntry::default()
+        };
+        let mut w2 = KillWatch::new(vec![entry_no_sys]);
+        assert!(
+            w2.tick(t0, &[make_proc(f32::NAN)], 90.0, &mut |_| None)
+                .is_empty()
+        );
+        assert!(
+            w2.tick(t0, &[make_proc(f32::INFINITY)], 90.0, &mut |_| None)
+                .is_empty()
+        );
     }
 }

@@ -59,23 +59,23 @@ impl From<MemoryMap> for MemoryList {
             ..KindTotal::default()
         })
         .collect();
-        let mut private_executable = (0, 0);
-        let (mut heaps, mut stacks) = (0, 0);
+        let mut private_executable = (0, 0u64);
+        let (mut heaps, mut stacks) = (0u64, 0u64);
         for a in &map.allocations {
             if a.usage.iter().any(|u| matches!(u, Usage::Heap { .. })) {
-                heaps += a.committed;
+                heaps = heaps.saturating_add(a.committed);
             }
             if a.usage.iter().any(|u| matches!(u, Usage::Stack { .. })) {
-                stacks += a.committed;
+                stacks = stacks.saturating_add(a.committed);
             }
             if let Some(t) = kinds.iter_mut().find(|t| t.kind == a.kind) {
-                t.committed += a.committed;
-                t.reserved += a.reserved;
+                t.committed = t.committed.saturating_add(a.committed);
+                t.reserved = t.reserved.saturating_add(a.reserved);
                 t.allocations += 1;
             }
             if a.kind == MemoryKind::Private && a.executable {
                 private_executable.0 += 1;
-                private_executable.1 += a.committed;
+                private_executable.1 = private_executable.1.saturating_add(a.committed);
             }
         }
         kinds.retain(|t| t.allocations > 0);
@@ -493,5 +493,39 @@ mod tests {
             ..MemoryMap::default()
         });
         assert!(unread.usage_unread);
+    }
+    #[test]
+    fn memory_list_saturates_huge_totals_without_overflow() {
+        let alloc = |committed, reserved, usage| Allocation {
+            base: 0x1000,
+            kind: MemoryKind::Private,
+            reserved,
+            committed,
+            regions: 1,
+            protection: 0,
+            executable: true,
+            name: None,
+            usage,
+        };
+        let heap = Usage::Heap {
+            default: false,
+            wow64: false,
+        };
+        let stack = Usage::Stack {
+            tid: 1,
+            wow64: false,
+        };
+        let list = MemoryList::from(MemoryMap {
+            allocations: vec![
+                alloc(u64::MAX - 10, u64::MAX - 5, vec![heap, stack]),
+                alloc(100, 100, vec![heap, stack]),
+            ],
+            ..MemoryMap::default()
+        });
+        assert_eq!(list.kinds[0].committed, u64::MAX);
+        assert_eq!(list.kinds[0].reserved, u64::MAX);
+        assert_eq!(list.heaps, u64::MAX);
+        assert_eq!(list.stacks, u64::MAX);
+        assert_eq!(list.private_executable, (2, u64::MAX));
     }
 }
