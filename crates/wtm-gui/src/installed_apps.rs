@@ -307,7 +307,7 @@ impl View {
             4 => scope_label(a.id.scope).cmp(scope_label(b.id.scope)),
             _ => crate::sort::text(&a.name, &b.name),
         });
-        let row_height = ui.spacing().interact_size.y.max(26.0);
+        let row_height = ui.spacing().interact_size.y;
         let table_w = ui.available_width().max(850.0);
         crate::theme::table_panel(ui, "installed_apps", table_w, |ui| {
             let table_height = (ui.ctx().content_rect().height() * 0.52).clamp(160.0, 600.0);

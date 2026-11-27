@@ -12604,5 +12604,473 @@
     "de": "Wenn diese Programme laufen",
     "fr": "Quand ces programmes s'exécutent",
     "es": "Cuando se ejecutan estos programas"
+  },
+  "Click to copy": {
+    "tr": "Click to copy",
+    "de": "Click to copy",
+    "fr": "Click to copy",
+    "es": "Click to copy"
+  },
+  "Clear the search box or switch the scope filter.": {
+    "tr": "Clear the search box or switch the scope filter.",
+    "de": "Clear the search box or switch the scope filter.",
+    "fr": "Clear the search box or switch the scope filter.",
+    "es": "Clear the search box or switch the scope filter."
+  },
+  "System Toolkit": {
+    "tr": "System Toolkit",
+    "de": "System Toolkit",
+    "fr": "System Toolkit",
+    "es": "System Toolkit"
+  },
+  "Risk Scan": {
+    "tr": "Risk Scan",
+    "de": "Risk Scan",
+    "fr": "Risk Scan",
+    "es": "Risk Scan"
+  },
+  "Disk Cleanup": {
+    "tr": "Disk Cleanup",
+    "de": "Disk Cleanup",
+    "fr": "Disk Cleanup",
+    "es": "Disk Cleanup"
+  },
+  "RAM Cleaner": {
+    "tr": "RAM Cleaner",
+    "de": "RAM Cleaner",
+    "fr": "RAM Cleaner",
+    "es": "RAM Cleaner"
+  },
+  "Scheduled Tasks": {
+    "tr": "Scheduled Tasks",
+    "de": "Scheduled Tasks",
+    "fr": "Scheduled Tasks",
+    "es": "Scheduled Tasks"
+  },
+  "Windows Tweaks": {
+    "tr": "Windows Tweaks",
+    "de": "Windows Tweaks",
+    "fr": "Windows Tweaks",
+    "es": "Windows Tweaks"
+  },
+  "Repair & Network": {
+    "tr": "Repair & Network",
+    "de": "Repair & Network",
+    "fr": "Repair & Network",
+    "es": "Repair & Network"
+  },
+  "Recommended bloatware only": {
+    "tr": "Recommended bloatware only",
+    "de": "Recommended bloatware only",
+    "fr": "Recommended bloatware only",
+    "es": "Recommended bloatware only"
+  },
+  "Bloatware only": {
+    "tr": "Bloatware only",
+    "de": "Bloatware only",
+    "fr": "Bloatware only",
+    "es": "Bloatware only"
+  },
+  "Update results": {
+    "tr": "Update results",
+    "de": "Update results",
+    "fr": "Update results",
+    "es": "Update results"
+  },
+  "No matching Store apps": {
+    "tr": "No matching Store apps",
+    "de": "No matching Store apps",
+    "fr": "No matching Store apps",
+    "es": "No matching Store apps"
+  },
+  "Clear the search filter or turn off 'Bloatware only'.": {
+    "tr": "Clear the search filter or turn off 'Bloatware only'.",
+    "de": "Clear the search filter or turn off 'Bloatware only'.",
+    "fr": "Clear the search filter or turn off 'Bloatware only'.",
+    "es": "Clear the search filter or turn off 'Bloatware only'."
+  },
+  "Action": {
+    "tr": "Action",
+    "de": "Action",
+    "fr": "Action",
+    "es": "Action"
+  },
+  "Bloatware": {
+    "tr": "Bloatware",
+    "de": "Bloatware",
+    "fr": "Bloatware",
+    "es": "Bloatware"
+  },
+  "All packages are up to date": {
+    "tr": "All packages are up to date",
+    "de": "All packages are up to date",
+    "fr": "All packages are up to date",
+    "es": "All packages are up to date"
+  },
+  "No package updates were reported by WinGet or Microsoft Store.": {
+    "tr": "No package updates were reported by WinGet or Microsoft Store.",
+    "de": "No package updates were reported by WinGet or Microsoft Store.",
+    "fr": "No package updates were reported by WinGet or Microsoft Store.",
+    "es": "No package updates were reported by WinGet or Microsoft Store."
+  },
+  "Pick": {
+    "tr": "Pick",
+    "de": "Pick",
+    "fr": "Pick",
+    "es": "Pick"
+  },
+  "Scan with Microsoft Defender": {
+    "tr": "Scan with Microsoft Defender",
+    "de": "Scan with Microsoft Defender",
+    "fr": "Scan with Microsoft Defender",
+    "es": "Scan with Microsoft Defender"
+  },
+  "Available RAM": {
+    "tr": "Available RAM",
+    "de": "Available RAM",
+    "fr": "Available RAM",
+    "es": "Available RAM"
+  },
+  "Reclaimable": {
+    "tr": "Reclaimable",
+    "de": "Reclaimable",
+    "fr": "Reclaimable",
+    "es": "Reclaimable"
+  },
+  "Active tweaks": {
+    "tr": "Active tweaks",
+    "de": "Active tweaks",
+    "fr": "Active tweaks",
+    "es": "Active tweaks"
+  },
+  "Risk status": {
+    "tr": "Risk status",
+    "de": "Risk status",
+    "fr": "Risk status",
+    "es": "Risk status"
+  },
+  "Security & Risk Triage": {
+    "tr": "Security & Risk Triage",
+    "de": "Security & Risk Triage",
+    "fr": "Security & Risk Triage",
+    "es": "Security & Risk Triage"
+  },
+  "Scan system risks": {
+    "tr": "Scan system risks",
+    "de": "Scan system risks",
+    "fr": "Scan system risks",
+    "es": "Scan system risks"
+  },
+  "Defender quick scan": {
+    "tr": "Defender quick scan",
+    "de": "Defender quick scan",
+    "fr": "Defender quick scan",
+    "es": "Defender quick scan"
+  },
+  "Open quarantine folder": {
+    "tr": "Open quarantine folder",
+    "de": "Open quarantine folder",
+    "fr": "Open quarantine folder",
+    "es": "Open quarantine folder"
+  },
+  "No scan run yet": {
+    "tr": "No scan run yet",
+    "de": "No scan run yet",
+    "fr": "No scan run yet",
+    "es": "No scan run yet"
+  },
+  "No suspicious items found.": {
+    "tr": "No suspicious items found.",
+    "de": "No suspicious items found.",
+    "fr": "No suspicious items found.",
+    "es": "No suspicious items found."
+  },
+  "Filter findings": {
+    "tr": "Filter findings",
+    "de": "Filter findings",
+    "fr": "Filter findings",
+    "es": "Filter findings"
+  },
+  "All": {
+    "tr": "All",
+    "de": "All",
+    "fr": "All",
+    "es": "All"
+  },
+  "Suspicious": {
+    "tr": "Suspicious",
+    "de": "Suspicious",
+    "fr": "Suspicious",
+    "es": "Suspicious"
+  },
+  "Unsigned": {
+    "tr": "Unsigned",
+    "de": "Unsigned",
+    "fr": "Unsigned",
+    "es": "Unsigned"
+  },
+  "Defender": {
+    "tr": "Defender",
+    "de": "Defender",
+    "fr": "Defender",
+    "es": "Defender"
+  },
+  "Quarantine": {
+    "tr": "Quarantine",
+    "de": "Quarantine",
+    "fr": "Quarantine",
+    "es": "Quarantine"
+  },
+  "Delete": {
+    "tr": "Delete",
+    "de": "Delete",
+    "fr": "Delete",
+    "es": "Delete"
+  },
+  "Reason": {
+    "tr": "Reason",
+    "de": "Reason",
+    "fr": "Reason",
+    "es": "Reason"
+  },
+  "Safe Disk Cleanup": {
+    "tr": "Safe Disk Cleanup",
+    "de": "Safe Disk Cleanup",
+    "fr": "Safe Disk Cleanup",
+    "es": "Safe Disk Cleanup"
+  },
+  "Scan sizes": {
+    "tr": "Scan sizes",
+    "de": "Scan sizes",
+    "fr": "Scan sizes",
+    "es": "Scan sizes"
+  },
+  "Clean selected": {
+    "tr": "Clean selected",
+    "de": "Clean selected",
+    "fr": "Clean selected",
+    "es": "Clean selected"
+  },
+  "Recommended": {
+    "tr": "Recommended",
+    "de": "Recommended",
+    "fr": "Recommended",
+    "es": "Recommended"
+  },
+  "System Memory": {
+    "tr": "System Memory",
+    "de": "System Memory",
+    "fr": "System Memory",
+    "es": "System Memory"
+  },
+  "available": {
+    "tr": "available",
+    "de": "available",
+    "fr": "available",
+    "es": "available"
+  },
+  "Free memory now": {
+    "tr": "Free memory now",
+    "de": "Free memory now",
+    "fr": "Free memory now",
+    "es": "Free memory now"
+  },
+  "Before": {
+    "tr": "Before",
+    "de": "Before",
+    "fr": "Before",
+    "es": "Before"
+  },
+  "After": {
+    "tr": "After",
+    "de": "After",
+    "fr": "After",
+    "es": "After"
+  },
+  "Freed": {
+    "tr": "Freed",
+    "de": "Freed",
+    "fr": "Freed",
+    "es": "Freed"
+  },
+  "Filter scheduled tasks": {
+    "tr": "Filter scheduled tasks",
+    "de": "Filter scheduled tasks",
+    "fr": "Filter scheduled tasks",
+    "es": "Filter scheduled tasks"
+  },
+  "Show Microsoft tasks": {
+    "tr": "Show Microsoft tasks",
+    "de": "Show Microsoft tasks",
+    "fr": "Show Microsoft tasks",
+    "es": "Show Microsoft tasks"
+  },
+  "Microsoft tasks": {
+    "tr": "Microsoft tasks",
+    "de": "Microsoft tasks",
+    "fr": "Microsoft tasks",
+    "es": "Microsoft tasks"
+  },
+  "Filter tweaks": {
+    "tr": "Filter tweaks",
+    "de": "Filter tweaks",
+    "fr": "Filter tweaks",
+    "es": "Filter tweaks"
+  },
+  "Apply recommended": {
+    "tr": "Apply recommended",
+    "de": "Apply recommended",
+    "fr": "Apply recommended",
+    "es": "Apply recommended"
+  },
+  "Revert all": {
+    "tr": "Revert all",
+    "de": "Revert all",
+    "fr": "Revert all",
+    "es": "Revert all"
+  },
+  "Create System Restore Point": {
+    "tr": "Create System Restore Point",
+    "de": "Create System Restore Point",
+    "fr": "Create System Restore Point",
+    "es": "Create System Restore Point"
+  },
+  "System & Network Repair": {
+    "tr": "System & Network Repair",
+    "de": "System & Network Repair",
+    "fr": "System & Network Repair",
+    "es": "System & Network Repair"
+  },
+  "Flush DNS": {
+    "tr": "Flush DNS",
+    "de": "Flush DNS",
+    "fr": "Flush DNS",
+    "es": "Flush DNS"
+  },
+  "Renew DHCP IP": {
+    "tr": "Renew DHCP IP",
+    "de": "Renew DHCP IP",
+    "fr": "Renew DHCP IP",
+    "es": "Renew DHCP IP"
+  },
+  "Reset network stack": {
+    "tr": "Reset network stack",
+    "de": "Reset network stack",
+    "fr": "Reset network stack",
+    "es": "Reset network stack"
+  },
+  "Sync system clock": {
+    "tr": "Sync system clock",
+    "de": "Sync system clock",
+    "fr": "Sync system clock",
+    "es": "Sync system clock"
+  },
+  "Run SFC (/scannow)": {
+    "tr": "Run SFC (/scannow)",
+    "de": "Run SFC (/scannow)",
+    "fr": "Run SFC (/scannow)",
+    "es": "Run SFC (/scannow)"
+  },
+  "Run DISM (/RestoreHealth)": {
+    "tr": "Run DISM (/RestoreHealth)",
+    "de": "Run DISM (/RestoreHealth)",
+    "fr": "Run DISM (/RestoreHealth)",
+    "es": "Run DISM (/RestoreHealth)"
+  },
+  "Create restore point": {
+    "tr": "Create restore point",
+    "de": "Create restore point",
+    "fr": "Create restore point",
+    "es": "Create restore point"
+  },
+  "DNS Profile": {
+    "tr": "DNS Profile",
+    "de": "DNS Profile",
+    "fr": "DNS Profile",
+    "es": "DNS Profile"
+  },
+  "Apply DNS": {
+    "tr": "Apply DNS",
+    "de": "Apply DNS",
+    "fr": "Apply DNS",
+    "es": "Apply DNS"
+  },
+  "Refresh IP & DNS": {
+    "tr": "Refresh IP & DNS",
+    "de": "Refresh IP & DNS",
+    "fr": "Refresh IP & DNS",
+    "es": "Refresh IP & DNS"
+  },
+  "Network Adapters & IP Configuration": {
+    "tr": "Network Adapters & IP Configuration",
+    "de": "Network Adapters & IP Configuration",
+    "fr": "Network Adapters & IP Configuration",
+    "es": "Network Adapters & IP Configuration"
+  },
+  "Show disconnected adapters": {
+    "tr": "Show disconnected adapters",
+    "de": "Show disconnected adapters",
+    "fr": "Show disconnected adapters",
+    "es": "Show disconnected adapters"
+  },
+  "Show disconnected": {
+    "tr": "Show disconnected",
+    "de": "Show disconnected",
+    "fr": "Show disconnected",
+    "es": "Show disconnected"
+  },
+  "Reading network configuration…": {
+    "tr": "Reading network configuration…",
+    "de": "Reading network configuration…",
+    "fr": "Reading network configuration…",
+    "es": "Reading network configuration…"
+  },
+  "No active network adapters reported.": {
+    "tr": "No active network adapters reported.",
+    "de": "No active network adapters reported.",
+    "fr": "No active network adapters reported.",
+    "es": "No active network adapters reported."
+  },
+  "Command Output": {
+    "tr": "Command Output",
+    "de": "Command Output",
+    "fr": "Command Output",
+    "es": "Command Output"
+  },
+  "Scan risks, clean caches, apply reversible tweaks and repair Windows": {
+    "tr": "Scan risks, clean caches, apply reversible tweaks and repair Windows",
+    "de": "Scan risks, clean caches, apply reversible tweaks and repair Windows",
+    "fr": "Scan risks, clean caches, apply reversible tweaks and repair Windows",
+    "es": "Scan risks, clean caches, apply reversible tweaks and repair Windows"
+  },
+  "Select an application below to inspect its install path or start its uninstaller.": {
+    "tr": "Select an application below to inspect its install path or start its uninstaller.",
+    "de": "Select an application below to inspect its install path or start its uninstaller.",
+    "fr": "Select an application below to inspect its install path or start its uninstaller.",
+    "es": "Select an application below to inspect its install path or start its uninstaller."
+  },
+  "Current-user Microsoft Store packages. Right-click any row to copy ID, version or install path.": {
+    "tr": "Current-user Microsoft Store packages. Right-click any row to copy ID, version or install path.",
+    "de": "Current-user Microsoft Store packages. Right-click any row to copy ID, version or install path.",
+    "fr": "Current-user Microsoft Store packages. Right-click any row to copy ID, version or install path.",
+    "es": "Current-user Microsoft Store packages. Right-click any row to copy ID, version or install path."
+  },
+  "Security, Cleanup, Memory & Windows Maintenance": {
+    "tr": "Security, Cleanup, Memory & Windows Maintenance",
+    "de": "Security, Cleanup, Memory & Windows Maintenance",
+    "fr": "Security, Cleanup, Memory & Windows Maintenance",
+    "es": "Security, Cleanup, Memory & Windows Maintenance"
+  },
+  "Ready to scan processes, startup, services, tasks and policies.": {
+    "tr": "Ready to scan processes, startup, services, tasks and policies.",
+    "de": "Ready to scan processes, startup, services, tasks and policies.",
+    "fr": "Ready to scan processes, startup, services, tasks and policies.",
+    "es": "Ready to scan processes, startup, services, tasks and policies."
+  },
+  "Click 'Scan system risks' to inspect processes, startup entries, services, tasks and policies.": {
+    "tr": "Click 'Scan system risks' to inspect processes, startup entries, services, tasks and policies.",
+    "de": "Click 'Scan system risks' to inspect processes, startup entries, services, tasks and policies.",
+    "fr": "Click 'Scan system risks' to inspect processes, startup entries, services, tasks and policies.",
+    "es": "Click 'Scan system risks' to inspect processes, startup entries, services, tasks and policies."
   }
 }

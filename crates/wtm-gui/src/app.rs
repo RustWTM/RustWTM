@@ -3316,25 +3316,24 @@ fn modules_list(ui: &mut Ui, list: &[(wtm_core::Module, wtm_core::Signature)]) {
             for (m, s) in sorted {
                 let (risk_level, risk_reason) =
                     wtm_core::risk::assess_process_risk(&m.name, &m.path, Some(s));
-                let (color, state) = if risk_level == wtm_core::risk::RiskLevel::Suspicious {
-                    (crate::theme::text_color(ui, BAD), risk_reason)
-                } else {
-                    match s {
-                        Signature::Invalid(e) => (
-                            crate::theme::text_color(ui, BAD),
-                            crate::i18n::format("invalid signature: {0}", std::slice::from_ref(e)),
-                        ),
-                        Signature::Unsigned => (
-                            crate::theme::text_color(ui, WARN),
-                            crate::i18n::tr("unsigned").to_owned(),
-                        ),
-                        Signature::Signed { signer, .. } => (
-                            ui.visuals().weak_text_color(),
-                            signer
-                                .clone()
-                                .unwrap_or_else(|| crate::i18n::tr("signed").to_owned()),
-                        ),
+                let (color, state) = match s {
+                    Signature::Invalid(e) => (
+                        crate::theme::text_color(ui, BAD),
+                        crate::i18n::format("invalid signature: {0}", std::slice::from_ref(e)),
+                    ),
+                    _ if risk_level == wtm_core::risk::RiskLevel::Suspicious => {
+                        (crate::theme::text_color(ui, BAD), risk_reason)
                     }
+                    Signature::Unsigned => (
+                        crate::theme::text_color(ui, WARN),
+                        crate::i18n::tr("unsigned").to_owned(),
+                    ),
+                    Signature::Signed { signer, .. } => (
+                        ui.visuals().weak_text_color(),
+                        signer
+                            .clone()
+                            .unwrap_or_else(|| crate::i18n::tr("signed").to_owned()),
+                    ),
                 };
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(&m.name).small().strong())
@@ -12770,6 +12769,7 @@ o-such-folder",
                         Tab::Users,
                         Tab::Network,
                         Tab::Ports,
+                        Tab::Toolkit,
                         Tab::History,
                         Tab::KillList,
                         Tab::About,

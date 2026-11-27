@@ -271,7 +271,7 @@ pub fn row(
     collapsed: bool,
 ) -> egui::Response {
     let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), 32.0), Sense::click());
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 30.0), Sense::click());
     response.widget_info(|| {
         egui::WidgetInfo::selected(
             egui::accesskit::Role::Button,
