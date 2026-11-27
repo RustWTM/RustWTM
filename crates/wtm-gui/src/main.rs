@@ -66,6 +66,7 @@ mod support_bundle;
 mod telegram_settings;
 mod theme;
 mod threads_view;
+mod toolkit_view;
 mod tray;
 #[cfg(test)]
 mod ui_tests;

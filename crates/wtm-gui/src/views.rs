@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use eframe::egui::{self, Align, Color32, Layout, Ui};
+use eframe::egui::{self, Align, Layout, Ui};
 use egui_extras::Column;
 use std::net::SocketAddr;
 
@@ -128,7 +128,12 @@ pub fn users(ui: &mut Ui, data: &Data) -> Option<(u32, String, crate::backend::S
                     });
                     row.col(|ui| {
                         crate::theme::table_cell(ui, |ui| {
-                            ui.label(crate::i18n::debug(session.state));
+                            let col = match session.state {
+                                wtm_core::SessionState::Active => GOOD,
+                                wtm_core::SessionState::Disconnected => WARN,
+                                _ => crate::theme::CPU,
+                            };
+                            crate::theme::pill(ui, col, &crate::i18n::debug(session.state));
                         })
                     });
                     row.col(|ui| crate::theme::table_cell(ui, |ui| right(ui, count.to_string())));
@@ -547,16 +552,32 @@ pub fn network(
                 }));
                 row.col(|ui| crate::theme::table_cell(ui, |ui| {right(ui, c.pid.to_string()); }));
                 row.col(|ui| crate::theme::table_cell(ui, |ui| {
-                    ui.label(format!("{:?}", c.protocol).to_uppercase());
+                    let proto = format!("{:?}", c.protocol).to_uppercase();
+                    let col = if c.protocol == wtm_core::Protocol::Tcp {
+                        crate::theme::CPU
+                    } else {
+                        crate::theme::MEMORY
+                    };
+                    crate::theme::pill(ui, col, &proto);
                 }));
                 row.col(|ui| crate::theme::table_cell(ui, |ui| {
-                    ui.label(c.local.to_string());
+                    ui.label(egui::RichText::new(c.local.to_string()).monospace().size(11.5));
                 }));
                 row.col(|ui| crate::theme::table_cell(ui, |ui| {
-                    ui.label(remote.as_str());
+                    ui.label(egui::RichText::new(remote.as_str()).monospace().size(11.5));
                 }));
                 row.col(|ui| crate::theme::table_cell(ui, |ui| {
-                    ui.label(c.state.map(crate::i18n::debug).unwrap_or_default());
+                    if let Some(st) = c.state {
+                        let col = match st {
+                            wtm_core::TcpState::Established => GOOD,
+                            wtm_core::TcpState::Listen => crate::theme::CPU,
+                            wtm_core::TcpState::CloseWait
+                            | wtm_core::TcpState::TimeWait
+                            | wtm_core::TcpState::Closing => WARN,
+                            _ => ui.visuals().weak_text_color(),
+                        };
+                        crate::theme::pill(ui, col, &crate::i18n::debug(st));
+                    }
                 }));
                 row.col(|ui| crate::theme::table_cell(ui, |ui| {
                     if let Some(pair) = closable(c)
@@ -641,15 +662,6 @@ pub fn service_operations(ui: &mut Ui, service: &wtm_core::ServiceEntry) -> Opti
     result
 }
 
-/// Running services in green, stopped ones in secondary text, the others
-/// (starting, stopping, paused) in orange.
-fn state_color(ui: &Ui, state: wtm_core::ServiceState) -> Color32 {
-    match state {
-        wtm_core::ServiceState::Running => crate::theme::text_color(ui, GOOD),
-        wtm_core::ServiceState::Stopped => ui.visuals().weak_text_color(),
-        _ => crate::theme::text_color(ui, WARN),
-    }
-}
 fn service_state_filter() -> egui::Id {
     egui::Id::unique("service-state-filter")
 }
@@ -835,7 +847,12 @@ pub fn services(
                     });
                     row.col(|ui| {
                         crate::theme::table_cell(ui, |ui| {
-                            ui.colored_label(state_color(ui, s.state), crate::i18n::debug(s.state));
+                            let col = match s.state {
+                                wtm_core::ServiceState::Running => GOOD,
+                                wtm_core::ServiceState::Stopped => ui.visuals().weak_text_color(),
+                                _ => WARN,
+                            };
+                            crate::theme::pill(ui, col, &crate::i18n::debug(s.state));
                         })
                     });
                     row.col(|ui| {
@@ -1572,14 +1589,21 @@ pub fn startup(
                     row.col(|ui| {
                         crate::theme::table_cell(ui, |ui| match startup_usage(data, e) {
                             Some(Some(u)) => {
-                                ui.label(impact_label(wtm_core::startup_impact::Impact::of(u)))
-                                    .on_hover_text(crate::i18n::format(
+                                let imp = wtm_core::startup_impact::Impact::of(u);
+                                let col = match imp {
+                                    wtm_core::startup_impact::Impact::High => BAD,
+                                    wtm_core::startup_impact::Impact::Medium => WARN,
+                                    wtm_core::startup_impact::Impact::Low => GOOD,
+                                };
+                                crate::theme::pill(ui, col, impact_label(imp)).on_hover_text(
+                                    crate::i18n::format(
                                         "CPU at startup: {0} · Disk I/O at startup: {1}",
                                         &[
                                             format!("{} ms", u.cpu_us / 1000),
                                             format_bytes(u.disk_bytes as f64),
                                         ],
-                                    ));
+                                    ),
+                                );
                             }
                             Some(None) => {
                                 ui.weak(crate::i18n::tr("Not measured"));

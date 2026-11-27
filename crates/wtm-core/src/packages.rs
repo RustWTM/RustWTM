@@ -9,6 +9,70 @@ pub struct Package {
     pub installed: String,
     pub target: Option<String>,
 }
+/// Returns `true` when a Store package ID prefix matches common preinstalled
+/// bloatware/promotional apps.
+pub fn is_recommended_bloatware(id: &str) -> bool {
+    const PREFIXES: &[&str] = &[
+        "microsoft.bingnews",
+        "microsoft.bingweather",
+        "microsoft.gethelp",
+        "microsoft.getstarted",
+        "microsoft.microsoft3dviewer",
+        "microsoft.microsoftofficehub",
+        "microsoft.microsoftsolitairecollection",
+        "microsoft.mixedreality.portal",
+        "microsoft.oneconnect",
+        "microsoft.powerautomatedesktop",
+        "microsoft.skypeapp",
+        "microsoft.todos",
+        "microsoft.windows.devhome",
+        "microsoft.windowsfeedbackhub",
+        "microsoft.windowsmaps",
+        "microsoft.zunevideo",
+        "microsoftcorporationii.microsoftfamily",
+        "king.com.",
+        "spotifyab.spotifymusic",
+        "facebook.",
+        "bytedancepte.ltd.tiktok",
+        "4df9e0f8.netflix",
+        "amazonvideo.primevideo",
+        "disney.",
+        "linkedinforwindows",
+    ];
+    let lower = id.to_ascii_lowercase();
+    PREFIXES.iter().any(|p| lower.starts_with(p))
+}
+
+/// Removes a current-user Microsoft Store package by ID or family name.
+pub fn remove_store_app(id_or_family: &str) -> Result<String, String> {
+    if !identity(id_or_family) {
+        return Err("Invalid Store package identifier".into());
+    }
+    let script = format!(
+        "$pkgs = Get-AppxPackage | Where-Object {{ $_.Name -eq '{id_or_family}' -or $_.PackageFamilyName -eq '{id_or_family}' }}; \
+         if (-not $pkgs) {{ throw 'Package not found for current user.' }}; \
+         $pkgs | Remove-AppxPackage -ErrorAction Stop"
+    );
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let out = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-Command", &script])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|e| format!("powershell: {e}"))?;
+
+    if out.status.success() {
+        Ok(format!("Removed Store package '{id_or_family}'."))
+    } else {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_owned();
+        Err(if err.is_empty() {
+            format!("Could not remove '{id_or_family}'")
+        } else {
+            err
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoreApp {
     pub id: String,

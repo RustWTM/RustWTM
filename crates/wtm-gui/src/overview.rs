@@ -1369,6 +1369,35 @@ pub fn overview(
     if layout.everything_hidden() {
         ui.weak(crate::i18n::tr("Every Overview card is hidden."));
     }
+    let avail_mem = data
+        .snapshot
+        .as_ref()
+        .map(|s| format!("{} free", format_bytes(s.system.memory_available as f64)))
+        .unwrap_or_default();
+    let tk_parts: Vec<(&str, Color32)> = if avail_mem.is_empty() {
+        Vec::new()
+    } else {
+        vec![(&avail_mem, crate::theme::MEMORY)]
+    };
+    crate::theme::card_with(ui, crate::i18n::tr("System Toolkit"), &tk_parts, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            for (subtab, label) in [
+                (0, crate::i18n::tr("Risk Scan")),
+                (1, crate::i18n::tr("Disk Cleanup")),
+                (2, crate::i18n::tr("RAM Cleaner")),
+                (3, crate::i18n::tr("Scheduled Tasks")),
+                (4, crate::i18n::tr("Windows Tweaks")),
+                (5, crate::i18n::tr("Repair & Network")),
+            ] {
+                if ui
+                    .add(egui::Button::new(label).min_size(egui::vec2(126.0, 28.0)))
+                    .clicked()
+                {
+                    intents.push(Intent::ShowToolkit(subtab));
+                }
+            }
+        });
+    });
     if ui
         .small_button(crate::i18n::tr("Customize Overview…"))
         .on_hover_text(crate::i18n::tr("Choose the cards and their order"))

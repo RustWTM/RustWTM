@@ -679,7 +679,13 @@ fn listening_table(
                     });
                     row.col(|ui| {
                         crate::theme::table_cell(ui, |ui| {
-                            ui.label(format!("{:?}", u.protocol).to_uppercase());
+                            let proto = format!("{:?}", u.protocol).to_uppercase();
+                            let col = if u.protocol == Protocol::Tcp {
+                                crate::theme::CPU
+                            } else {
+                                crate::theme::MEMORY
+                            };
+                            crate::theme::pill(ui, col, &proto);
                         })
                     });
                     row.col(|ui| {

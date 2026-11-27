@@ -841,6 +841,19 @@ pub fn colored(ui: &mut Ui, color: Color32, text: impl Into<String>) -> egui::Re
     ui.label(RichText::new(text.into()).color(text_color(ui, color)))
 }
 
+/// A compact tinted status pill (e.g. `Running`, `High`, `Bloatware`, `DHCP`).
+pub fn pill(ui: &mut Ui, color: Color32, text: &str) -> egui::Response {
+    let fg = text_color(ui, color);
+    egui::Frame::new()
+        .fill(color.gamma_multiply(0.16))
+        .corner_radius(CornerRadius::same(6))
+        .inner_margin(Margin::symmetric(7, 2))
+        .show(ui, |ui| {
+            ui.label(RichText::new(text).size(11.5).strong().color(fg))
+        })
+        .inner
+}
+
 /// A spinner and what is being loaded, centred below the controls.
 pub fn loading(ui: &mut Ui, text: &str) {
     ui.add_space(0.0);

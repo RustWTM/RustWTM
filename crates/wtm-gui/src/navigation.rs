@@ -25,6 +25,7 @@ pub enum Icon {
     Users,
     Network,
     Ports,
+    Toolkit,
     About,
     Power,
 }
@@ -225,6 +226,11 @@ fn paint(ui: &Ui, rect: Rect, icon: Icon, color: Color32) {
                 line(&[(x, 2.0), (x, 6.0)]);
             }
             line(&[(9.5, 13.0), (9.5, 18.0)]);
+        }
+        Icon::Toolkit => {
+            box_at(2.0, 6.0, 15.0, 11.0);
+            line(&[(6.5, 6.0), (6.5, 3.0), (12.5, 3.0), (12.5, 6.0)]);
+            line(&[(2.0, 10.5), (17.0, 10.5)]);
         }
         Icon::About => {
             circle(9.5, 9.5, 7.5);

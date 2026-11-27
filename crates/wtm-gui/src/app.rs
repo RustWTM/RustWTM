@@ -41,10 +41,11 @@ enum Tab {
     About,
     Cores,
     AppPower,
+    Toolkit,
 }
 
 /// Navigation follows the task: observe, protect, inspect the system, configure.
-const NAV: [(Tab, crate::navigation::Icon, &str); 22] = {
+const NAV: [(Tab, crate::navigation::Icon, &str); 23] = {
     use crate::navigation::Icon as I;
     [
         (Tab::Overview, I::Overview, "Overview"),
@@ -67,6 +68,7 @@ const NAV: [(Tab, crate::navigation::Icon, &str); 22] = {
         (Tab::Users, I::Users, "Users"),
         (Tab::Network, I::Network, "Network"),
         (Tab::Ports, I::Ports, "Ports"),
+        (Tab::Toolkit, I::Toolkit, "Toolkit"),
         (Tab::Settings, I::Settings, "Settings"),
         (Tab::About, I::About, "About"),
     ]
@@ -280,6 +282,9 @@ impl Tab {
             Self::Users => crate::i18n::tr("Sessions and the people using this machine"),
             Self::Network => crate::i18n::tr("Connections and the processes behind them"),
             Self::Ports => crate::i18n::tr("Find listeners, developer tools and available ports"),
+            Self::Toolkit => crate::i18n::tr(
+                "Scan risks, clean caches, apply reversible tweaks and repair Windows",
+            ),
             Self::Settings => crate::i18n::tr("Make RustWTM work the way you do"),
             Self::About => crate::i18n::tr("Built for a responsive Windows PC"),
         }
@@ -418,6 +423,7 @@ struct UiState {
     incidents: crate::incidents::View,
     history_incidents: bool,
     packages: crate::packages::View,
+    toolkit: crate::toolkit_view::View,
     applications_page: u8,
     file_locks: crate::file_locks::View,
     disks_locks: bool,
@@ -823,6 +829,7 @@ impl Default for UiState {
             incidents: crate::incidents::View::default(),
             history_incidents: false,
             packages: crate::packages::View::default(),
+            toolkit: crate::toolkit_view::View::default(),
             applications_page: 0,
             disks_locks: false,
             devices: crate::devices::View::default(),
@@ -1652,6 +1659,14 @@ impl eframe::App for App {
                         service_cmds.extend(cmds);
                         intents.extend(more);
                     }
+                    Tab::Toolkit => {
+                        let procs = data
+                            .snapshot
+                            .as_ref()
+                            .map(|s| s.processes.as_slice())
+                            .unwrap_or(&[]);
+                        state.toolkit.show(ui, procs);
+                    }
                     Tab::About => {
                         let ctx = ui.ctx().clone();
                         let diagnostics = || crate::diagnostics::for_window(&data, &ctx);
@@ -2363,6 +2378,14 @@ impl eframe::App for App {
                         Some((session, user, crate::backend::SessionOp::SignOff));
                 }
                 Intent::OpenLocation(target) => backend.send(UiCommand::OpenLocation(target)),
+                Intent::DefenderScan(target) => {
+                    state.toolkit.scan_process(&ctx, &target);
+                    state.tab = Tab::Toolkit;
+                }
+                Intent::ShowToolkit(subtab) => {
+                    state.toolkit.open_subtab(subtab);
+                    state.tab = Tab::Toolkit;
+                }
                 Intent::Reveal(target) => {
                     // Asked for by name, so a hidden inspector comes back.
                     if state.inspector_mode == crate::workspace_inspector::Mode::Hidden {
@@ -3291,21 +3314,27 @@ fn modules_list(ui: &mut Ui, list: &[(wtm_core::Module, wtm_core::Signature)]) {
         .max_height(260.0)
         .show(ui, |ui| {
             for (m, s) in sorted {
-                let (color, state) = match s {
-                    Signature::Invalid(e) => (
-                        crate::theme::text_color(ui, BAD),
-                        crate::i18n::format("invalid signature: {0}", std::slice::from_ref(e)),
-                    ),
-                    Signature::Unsigned => (
-                        crate::theme::text_color(ui, WARN),
-                        crate::i18n::tr("unsigned").to_owned(),
-                    ),
-                    Signature::Signed { signer, .. } => (
-                        ui.visuals().weak_text_color(),
-                        signer
-                            .clone()
-                            .unwrap_or_else(|| crate::i18n::tr("signed").to_owned()),
-                    ),
+                let (risk_level, risk_reason) =
+                    wtm_core::risk::assess_process_risk(&m.name, &m.path, Some(s));
+                let (color, state) = if risk_level == wtm_core::risk::RiskLevel::Suspicious {
+                    (crate::theme::text_color(ui, BAD), risk_reason)
+                } else {
+                    match s {
+                        Signature::Invalid(e) => (
+                            crate::theme::text_color(ui, BAD),
+                            crate::i18n::format("invalid signature: {0}", std::slice::from_ref(e)),
+                        ),
+                        Signature::Unsigned => (
+                            crate::theme::text_color(ui, WARN),
+                            crate::i18n::tr("unsigned").to_owned(),
+                        ),
+                        Signature::Signed { signer, .. } => (
+                            ui.visuals().weak_text_color(),
+                            signer
+                                .clone()
+                                .unwrap_or_else(|| crate::i18n::tr("signed").to_owned()),
+                        ),
+                    }
                 };
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(&m.name).small().strong())
@@ -5200,13 +5229,13 @@ fn events(ui: &mut Ui, data: &Data, view: &mut EventsView) -> Vec<Intent> {
                                         .to_string()
                                 })
                                 .unwrap_or_default();
-                            ui.label(time);
+                            ui.label(RichText::new(time).monospace().size(11.5));
                         })
                     });
                     row.col(|ui| {
                         crate::theme::table_cell(ui, |ui| {
                             let color = level_color(ui, e.level);
-                            ui.label(RichText::new(crate::i18n::debug(e.level)).color(color));
+                            crate::theme::pill(ui, color, &crate::i18n::debug(e.level));
                         })
                     });
                     row.col(|ui| {

@@ -1,8 +1,49 @@
 //! Desktop application management with a bounded background inventory.
-use eframe::egui::{self, Ui};
+use eframe::egui::{self, Color32, CornerRadius, Margin, RichText, Ui};
 use egui_extras::Column;
 use std::sync::mpsc::{self, Receiver};
 use wtm_core::installed::{AppId, InstalledApp, LaunchPlan, Report, Scope};
+
+use crate::theme::{ACCENT, CPU, GOOD, MEMORY, right};
+
+fn pill(ui: &mut Ui, color: Color32, label: &str) {
+    let fg = crate::theme::text_color(ui, color);
+    egui::Frame::new()
+        .fill(color.gamma_multiply(0.16))
+        .corner_radius(CornerRadius::same(6))
+        .inner_margin(Margin::symmetric(7, 2))
+        .show(ui, |ui| {
+            ui.label(RichText::new(label).size(11.5).strong().color(fg));
+        });
+}
+
+fn size_bar(ui: &mut Ui, bytes: Option<u64>, max_bytes: f32) {
+    let Some(n) = bytes else {
+        right(ui, "—");
+        return;
+    };
+    let frac = (n as f32 / max_bytes.max(1.0)).clamp(0.0, 1.0);
+    let label = crate::i18n::bytes(n as f64);
+    ui.horizontal(|ui| {
+        let bar_w = (ui.available_width() - 74.0).max(32.0);
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 6.0), egui::Sense::hover());
+        let track = if ui.visuals().dark_mode {
+            Color32::from_rgb(42, 46, 54)
+        } else {
+            Color32::from_rgb(226, 230, 236)
+        };
+        ui.painter().rect_filled(rect, CornerRadius::same(3), track);
+        let fill_w = (rect.width() * frac).max(if n > 0 { 3.0 } else { 0.0 });
+        if fill_w > 0.0 {
+            ui.painter().rect_filled(
+                egui::Rect::from_min_size(rect.min, egui::vec2(fill_w, rect.height())),
+                CornerRadius::same(3),
+                crate::theme::text_color(ui, ACCENT),
+            );
+        }
+        right(ui, label);
+    });
+}
 
 #[derive(Debug)]
 enum Outcome {
@@ -157,44 +198,102 @@ impl View {
                         .contains(&query)
             })
             .collect();
-        ui.weak(crate::i18n::format(
+        let total_bytes: u64 = rows.iter().filter_map(|a| a.estimated_bytes).sum();
+        let max_bytes = rows
+            .iter()
+            .filter_map(|a| a.estimated_bytes)
+            .max()
+            .unwrap_or(1)
+            .max(1) as f32;
+        let user_count = rows.iter().filter(|a| a.id.scope == Scope::User).count();
+        let machine_count = rows.len().saturating_sub(user_count);
+
+        let count_txt = crate::i18n::format(
             "{0} of {1} apps",
             &[rows.len().to_string(), report.apps.len().to_string()],
-        ));
-        let selected = self
-            .selected
-            .as_ref()
-            .and_then(|id| report.apps.iter().find(|app| &app.id == id))
-            .cloned();
-        if let Some(app) = &selected {
-            crate::theme::panel(ui, |ui| {
-                ui.strong(&app.name);
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(&app.publisher);
-                    ui.weak(&app.version);
-                    ui.weak(scope_label(app.id.scope));
-                });
-                if !app.location.is_empty() {
-                    ui.label(&app.location);
-                }
-                let plan = wtm_core::installed::plan(app);
-                if ui
-                    .add_enabled(
-                        self.worker.is_none() && plan.is_ok(),
-                        egui::Button::new(crate::i18n::tr("Uninstall…")),
-                    )
-                    .clicked()
-                    && let Ok(plan) = plan.as_ref()
+        );
+        let total_txt = crate::i18n::bytes(total_bytes as f64);
+        let user_txt = format!("{user_count} user");
+        let mach_txt = format!("{machine_count} machine");
+        crate::theme::card_with(
+            ui,
+            crate::i18n::tr("Desktop apps"),
+            &[
+                (&count_txt, CPU),
+                (&total_txt, ACCENT),
+                (&user_txt, GOOD),
+                (&mach_txt, MEMORY),
+            ],
+            |ui| {
+                if let Some(app) = self
+                    .selected
+                    .as_ref()
+                    .and_then(|id| report.apps.iter().find(|app| &app.id == id))
+                    .cloned()
                 {
-                    self.confirm = Some((app.clone(), plan.clone()));
+                    ui.horizontal_wrapped(|ui| {
+                        ui.strong(&app.name);
+                        if !app.version.is_empty() {
+                            ui.label(RichText::new(&app.version).monospace().weak());
+                        }
+                        pill(
+                            ui,
+                            if app.id.scope == Scope::User {
+                                GOOD
+                            } else {
+                                CPU
+                            },
+                            scope_label(app.id.scope),
+                        );
+                        if !app.publisher.is_empty() {
+                            ui.weak(&app.publisher);
+                        }
+                    });
+                    if !app.location.is_empty()
+                        && ui
+                            .add(
+                                egui::Label::new(
+                                    RichText::new(&app.location).monospace().size(11.5).weak(),
+                                )
+                                .truncate()
+                                .sense(egui::Sense::click()),
+                            )
+                            .on_hover_text(crate::i18n::tr("Click to copy"))
+                            .clicked()
+                    {
+                        ui.ctx().copy_text(app.location.clone());
+                    }
+                    ui.add_space(4.0);
+                    let plan = wtm_core::installed::plan(&app);
+                    ui.horizontal_wrapped(|ui| {
+                        if crate::theme::primary_action(
+                            ui,
+                            self.worker.is_none() && plan.is_ok(),
+                            crate::i18n::tr("Uninstall…"),
+                        )
+                        .clicked()
+                            && let Ok(plan) = plan.as_ref()
+                        {
+                            self.confirm = Some((app.clone(), plan.clone()));
+                        }
+                        if let Err(reason) = plan {
+                            ui.weak(crate::i18n::tr(reason));
+                        }
+                    });
+                } else {
+                    ui.weak(crate::i18n::tr(
+                        "Select an application below to inspect its install path or start its uninstaller.",
+                    ));
                 }
-                if let Err(reason) = plan {
-                    ui.weak(crate::i18n::tr(reason));
-                }
-            });
-        }
+            },
+        );
+        ui.add_space(6.0);
         if rows.is_empty() {
-            ui.strong(crate::i18n::tr("No matching applications"));
+            crate::theme::empty_state(
+                ui,
+                crate::i18n::tr("No matching applications"),
+                crate::i18n::tr("Clear the search box or switch the scope filter."),
+            );
             return settings;
         }
         let mut sort =
@@ -208,8 +307,9 @@ impl View {
             4 => scope_label(a.id.scope).cmp(scope_label(b.id.scope)),
             _ => crate::sort::text(&a.name, &b.name),
         });
-        let row_height = ui.spacing().interact_size.y;
-        crate::theme::table_panel(ui, "installed_apps", 850.0, |ui| {
+        let row_height = ui.spacing().interact_size.y.max(26.0);
+        let table_w = ui.available_width().max(850.0);
+        crate::theme::table_panel(ui, "installed_apps", table_w, |ui| {
             let table_height = (ui.ctx().content_rect().height() * 0.52).clamp(160.0, 600.0);
             crate::theme::table(ui)
                 .max_scroll_height(table_height)
@@ -217,11 +317,11 @@ impl View {
                 .sense(egui::Sense::click())
                 .striped(true)
                 .resizable(true)
-                .column(Column::initial(300.0).at_least(180.0).clip(true))
+                .column(Column::remainder().at_least(220.0).clip(true))
                 .column(Column::initial(200.0).clip(true))
                 .column(Column::initial(120.0).clip(true))
-                .column(Column::initial(110.0).clip(true))
-                .column(Column::remainder().at_least(100.0).clip(true))
+                .column(Column::initial(160.0).clip(true))
+                .column(Column::initial(112.0).clip(true))
                 .header(row_height, |mut header| {
                     for (i, label) in ["Name", "Publisher", "Version", "Estimated size", "Scope"]
                         .iter()
@@ -238,10 +338,6 @@ impl View {
                     body.rows(row_height, rows.len(), |mut row| {
                         let app = rows[row.index()];
                         row.set_selected(self.selected.as_ref() == Some(&app.id));
-                        let size = app
-                            .estimated_bytes
-                            .map(|n| crate::i18n::bytes(n as f64))
-                            .unwrap_or_else(|| "—".into());
                         let mut name_response = None;
                         row.col(|ui| {
                             crate::theme::table_cell(ui, |ui| {
@@ -256,18 +352,39 @@ impl View {
                                 name_response = Some(response);
                             })
                         });
-                        for text in [
-                            app.publisher.as_str(),
-                            app.version.as_str(),
-                            size.as_str(),
-                            scope_label(app.id.scope),
-                        ] {
-                            row.col(|ui| {
-                                crate::theme::table_cell(ui, |ui| {
-                                    ui.add(egui::Label::new(text).truncate());
-                                })
+                        row.col(|ui| {
+                            crate::theme::table_cell(ui, |ui| {
+                                ui.add(egui::Label::new(&app.publisher).truncate());
                             });
-                        }
+                        });
+                        row.col(|ui| {
+                            crate::theme::table_cell(ui, |ui| {
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(&app.version).monospace().size(11.5),
+                                    )
+                                    .truncate(),
+                                );
+                            });
+                        });
+                        row.col(|ui| {
+                            crate::theme::table_cell(ui, |ui| {
+                                size_bar(ui, app.estimated_bytes, max_bytes);
+                            });
+                        });
+                        row.col(|ui| {
+                            crate::theme::table_cell(ui, |ui| {
+                                pill(
+                                    ui,
+                                    if app.id.scope == Scope::User {
+                                        GOOD
+                                    } else {
+                                        CPU
+                                    },
+                                    scope_label(app.id.scope),
+                                );
+                            });
+                        });
                         let response = row.response();
                         if response.clicked() {
                             self.selected = Some(app.id.clone());

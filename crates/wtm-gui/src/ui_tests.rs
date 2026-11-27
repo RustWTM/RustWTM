@@ -663,6 +663,8 @@ fn describe_intent(i: &Intent) -> String {
         Intent::SignOut(session, user) => format!("sign out {session} {user}"),
         Intent::Details(t) => format!("details {}", t.pid),
         Intent::RestartExplorer => "restart explorer".into(),
+        Intent::DefenderScan(t) => format!("defender scan {}", t.pid),
+        Intent::ShowToolkit(tab) => format!("show toolkit {tab}"),
     }
 }
 

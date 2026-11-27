@@ -334,7 +334,7 @@ pub fn show_with(
                     });
                     row.col(|ui| {
                         crate::theme::table_cell(ui, |ui| {
-                            theme::colored(
+                            theme::pill(
                                 ui,
                                 if c.state == "running" {
                                     theme::GOOD

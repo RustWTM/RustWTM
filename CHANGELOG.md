@@ -6,6 +6,54 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.41.2] - 2026-11-27
+
+[Release scope and validation](docs/0.41.2-review.md)
+
+Adds the System Toolkit workspace (Risk Scan, Disk Cleanup, RAM Cleaner,
+Scheduled Tasks, reversible Windows Tweaks, and Repair & Network with live
+adapter IP/DNS inspection), CLI counterparts, and visual upgrades across
+Installed Apps, Overview, Services, Startup, Users, Network, Ports,
+Containers, and Events.
+
+### Added
+
+- **System Toolkit (`Toolkit` tab & CLI)**:
+  - **Risk Scan & Quarantine**: Contextual risk heuristics (system-process
+    masquerading, unsigned binaries in high-risk folders, double-extension
+    files, non-Microsoft scheduled tasks, and security policy checks),
+    on-demand Microsoft Defender file & quick scans (`MpCmdRun.exe`),
+    quarantine flow, and right-click Defender scan from `Processes`.
+  - **Safe Disk Cleanup**: Dry-run size scan and categorized cleanup (Temp,
+    CBS/DISM/WindowsUpdate logs, GPU shader caches, Explorer thumbnails,
+    browser caches, developer caches, and Recycle Bin via `wtm-sys`) with
+    reparse-point and file-age guards.
+  - **RAM Cleaner**: System-wide working-set trimming with live RAM ring
+    gauge, sparkline, Before/After/Freed comparison cards, and per-process
+    memory reduction breakdown.
+  - **Scheduled Tasks**: Filterable, sortable Windows Task Scheduler view
+    with enable/disable switches.
+  - **Reversible Windows Tweaks**: Curated privacy, ads/AI, performance,
+    appearance, and Edge tweaks with Windows 10/11 filtering, JSON backup
+    and rollback, and one-click recommended/revert actions.
+  - **Repair & Network**: Live network adapter & IP/DHCP/DNS inspector,
+    Flush DNS, Renew DHCP IP, Network Reset, Time Sync, SFC/DISM, DNS
+    profile switcher, and System Restore Point creation.
+  - **CLI**: `wtm clean [--apply] [--ram]`, `wtm risk scan|defender`,
+    `wtm tasks list|enable|disable`, `wtm tweaks list|apply|undo`, and
+    `wtm repair net-info|flush-dns|renew-ip|sfc|dism|net-reset|time-sync|dns|restore-point`.
+  - **Locale validation**: Added `scripts/ci/check-locales.py`.
+
+### Changed
+
+- **Installed Apps (`Desktop apps`, `Store apps`, `Package updates`)**:
+  Replaced flat lists and collapsing headers with sortable full-width
+  tables, summary counters, proportional size bars, bloatware filtering,
+  direct Store package removal (`Remove-AppxPackage`), and switches.
+- **Consistent visual badges**: Added shared `theme::pill` badges across
+  `Overview`, `Toolkit`, `Users`, `Services`, `Startup apps`, `Network`,
+  `Ports`, `Containers`, and `Events`.
+
 ## [0.41.1] - 2026-11-27
 
 [Release scope and validation](docs/0.41.1-review.md)

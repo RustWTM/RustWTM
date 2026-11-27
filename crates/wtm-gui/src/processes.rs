@@ -535,6 +535,8 @@ pub enum Intent {
     Confirm(ProcessRef, Command),
     /// Show the executable in Explorer.
     OpenLocation(ProcessRef),
+    /// Scan the process executable with Microsoft Defender.
+    DefenderScan(ProcessRef),
     /// Open the Limits tab with a new limit for this image name.
     LimitApp(String),
     /// Select the process and show it in the Processes tab.
@@ -550,6 +552,8 @@ pub enum Intent {
     ShowContainers,
     /// Open Sensors & cooling.
     ShowSensors,
+    /// Open a specific subtab of the Toolkit view.
+    ShowToolkit(usize),
     /// Open the editor that arranges the Overview cards.
     CustomizeOverview,
     /// Write a full memory dump of the process.
@@ -3150,6 +3154,13 @@ pub fn context_menu(
             .clicked()
     {
         intents.push(Intent::RestartExplorer);
+        ui.close();
+    }
+    if ui
+        .button(crate::i18n::tr("Scan with Microsoft Defender"))
+        .clicked()
+    {
+        intents.push(Intent::DefenderScan(t.clone()));
         ui.close();
     }
     let mut cmd = |ui: &mut Ui, label: &str, command: Command, confirm: bool| {

@@ -10,6 +10,7 @@ mod parse;
 mod ports;
 mod power;
 mod table;
+mod toolkit;
 mod top;
 
 use std::io::{self, Write};
@@ -56,6 +57,40 @@ enum Command {
     Sensors {
         #[arg(long)]
         json: bool,
+    },
+    /// Scan or clean temporary files, shader/browser caches, Recycle Bin, or system RAM
+    Clean {
+        /// Actually delete files (default is a dry-run scan)
+        #[arg(long)]
+        apply: bool,
+        /// Trim working sets of eligible processes and compare system RAM before/after
+        #[arg(long)]
+        ram: bool,
+        /// Specific category IDs to clean (defaults to recommended categories)
+        #[arg(long)]
+        category: Vec<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Inspect, enable, or disable Windows scheduled tasks
+    Tasks {
+        #[command(subcommand)]
+        action: toolkit::TaskCommand,
+    },
+    /// Scan for suspicious processes, startup entries, services, and files
+    Risk {
+        #[command(subcommand)]
+        action: toolkit::RiskCommand,
+    },
+    /// Inspect, apply, or undo reversible Windows privacy and performance tweaks
+    Tweaks {
+        #[command(subcommand)]
+        action: toolkit::TweakCommand,
+    },
+    /// Run system file repair (SFC/DISM), DNS profile changes, or network reset
+    Repair {
+        #[command(subcommand)]
+        action: toolkit::RepairCommand,
     },
     /// Print a one-shot process listing
     List {
@@ -465,6 +500,16 @@ fn main() -> anyhow::Result<ExitCode> {
             kill::kill_list(action, wtm_ipc::Client::connect, &mut io::stdout().lock())
         }
         Command::Panic { yes } => run_panic(yes),
+        Command::Clean {
+            apply,
+            ram,
+            category,
+            json,
+        } => Ok(toolkit::run_clean(apply, ram, category, json)),
+        Command::Tasks { action } => Ok(toolkit::run_tasks(action)),
+        Command::Risk { action } => Ok(toolkit::run_risk(action)),
+        Command::Tweaks { action } => Ok(toolkit::run_tweaks(action)),
+        Command::Repair { action } => Ok(toolkit::run_repair(action)),
         Command::Sensors { json } => {
             let mut reader = wtm_core::hardware::HardwareReader::new(false);
             let report = reader.sample().map_err(anyhow::Error::msg)?;
@@ -1195,5 +1240,69 @@ mod tests {
             text.contains("Run wtm.exe from the same release as the service"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn toolkit_cli_subcommands_parse() {
+        assert!(matches!(
+            Cli::try_parse_from(["wtm", "clean", "--json"])
+                .unwrap()
+                .command,
+            Command::Clean {
+                apply: false,
+                ram: false,
+                json: true,
+                ..
+            }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["wtm", "clean", "--ram"])
+                .unwrap()
+                .command,
+            Command::Clean { ram: true, .. }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["wtm", "tasks", "list", "--json"])
+                .unwrap()
+                .command,
+            Command::Tasks {
+                action: toolkit::TaskCommand::List {
+                    microsoft: false,
+                    json: true
+                }
+            }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["wtm", "risk", "scan", "--json"])
+                .unwrap()
+                .command,
+            Command::Risk {
+                action: toolkit::RiskCommand::Scan { json: true }
+            }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["wtm", "tweaks", "apply", "telemetry_min"])
+                .unwrap()
+                .command,
+            Command::Tweaks {
+                action: toolkit::TweakCommand::Apply { .. }
+            }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["wtm", "repair", "net-info", "--json"])
+                .unwrap()
+                .command,
+            Command::Repair {
+                action: toolkit::RepairCommand::NetInfo { json: true }
+            }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["wtm", "repair", "dns", "cloudflare"])
+                .unwrap()
+                .command,
+            Command::Repair {
+                action: toolkit::RepairCommand::Dns { .. }
+            }
+        ));
     }
 }

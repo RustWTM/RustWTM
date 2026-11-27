@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod cleanup;
 pub mod control;
 pub mod devices;
 pub mod diskscan;
@@ -20,11 +21,15 @@ pub mod power;
 mod probe;
 pub mod project;
 mod protection;
+pub mod repair;
+pub mod risk;
 mod sampler;
 pub mod startup;
 pub mod startup_impact;
 pub mod task_manager;
+pub mod tasks;
 mod tree;
+pub mod tweaks;
 pub mod update;
 
 pub use model::{
